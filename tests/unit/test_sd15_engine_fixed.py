@@ -42,7 +42,10 @@ def mock_vae():
 
 @pytest.fixture
 def engine():
-    return SD15LineartEngine(device="cpu", dtype=torch.float32)
+    eng = SD15LineartEngine(device="cpu", dtype=torch.float32)
+    # Mock para evitar re-execução (Artifact Gate) em imagens vazias de teste
+    eng._is_psychedelic_output = MagicMock(return_value=False)
+    return eng
 
 def test_initialization(engine):
     assert engine.device == "cpu"
@@ -131,7 +134,7 @@ def test_generate_page_clamps_ip_adapter_end_step(engine, mock_sd_pipeline, mock
     engine.pipe.side_effect = _pipe_side_effect
 
     img = Image.new("RGB", (512, 512))
-    ref = Image.new("RGB", (224, 224), (128, 128, 128))
+    ref = Image.linear_gradient("L").convert("RGB").resize((224, 224))
     opts = {
         "prompt": "foo",
         "quality_mode": "balanced",
@@ -158,7 +161,7 @@ def test_generate_page_uses_configured_default_ip_scale(engine, mock_sd_pipeline
     engine.pipe.return_value = mock_out
 
     img = Image.new("RGB", (512, 512))
-    ref = Image.new("RGB", (224, 224), (128, 128, 128))
+    ref = Image.linear_gradient("L").convert("RGB").resize((224, 224))
     opts = {"prompt": "foo", "quality_mode": "balanced", "reference_image": ref}
 
     res = engine.generate_page(img, opts)
@@ -183,7 +186,7 @@ def test_generate_page_end_step_zero_disables_ip_adapter_throughout(engine, mock
     engine.pipe.side_effect = _pipe_side_effect
 
     img = Image.new("RGB", (512, 512))
-    ref = Image.new("RGB", (224, 224), (128, 128, 128))
+    ref = Image.linear_gradient("L").convert("RGB").resize((224, 224))
     opts = {
         "prompt": "foo",
         "quality_mode": "balanced",
@@ -215,7 +218,7 @@ def test_generate_region_retries_with_safe_profile_on_artifact(engine, mock_sd_p
     # Força gate de artefato no primeiro passe e não no segundo
     with patch.object(engine, "_is_psychedelic_output", side_effect=[True, False]):
         img = Image.new("RGB", (512, 512))
-        ref = Image.new("RGB", (224, 224), (128, 128, 128))
+        ref = Image.linear_gradient("L").convert("RGB").resize((224, 224))
         opts = {
             "prompt": "foo",
             "quality_mode": "balanced",
@@ -242,7 +245,8 @@ def test_invalid_reference_disables_ip_adapter(engine, mock_sd_pipeline, mock_co
     bad_ref = Image.new("RGB", (32, 32), (120, 120, 120))
     img = Image.new("RGB", (512, 512))
 
-    res = engine.generate_page(img, {"reference_image": bad_ref, "prompt": "foo", "quality_mode": "balanced"})
+    with patch.object(engine, "_is_psychedelic_output", return_value=False):
+        res = engine.generate_page(img, {"reference_image": bad_ref, "prompt": "foo", "quality_mode": "balanced"})
     assert res is not None
 
     scales = [call.args[0] for call in engine.pipe.set_ip_adapter_scale.call_args_list]
@@ -280,14 +284,15 @@ def test_generation_profile_safe_overrides_defaults(engine, mock_sd_pipeline, mo
     engine.pipe.return_value = mock_out
 
     img = Image.new("RGB", (512, 512))
-    ref = Image.new("RGB", (224, 224), (128, 128, 128))
+    ref = Image.linear_gradient("L").convert("RGB").resize((224, 224))
 
-    res = engine.generate_page(img, {
-        "prompt": "foo",
-        "reference_image": ref,
-        "generation_profile": "safe",
-        "quality_mode": "balanced",
-    })
+    with patch.object(engine, "_is_psychedelic_output", return_value=False):
+        res = engine.generate_page(img, {
+            "prompt": "foo",
+            "reference_image": ref,
+            "generation_profile": "safe",
+            "quality_mode": "balanced",
+        })
     assert res is not None
 
     first_scale = engine.pipe.set_ip_adapter_scale.call_args_list[0].args[0]
@@ -311,12 +316,13 @@ def test_generation_profile_switch_updates_scheduler(engine, mock_sd_pipeline, m
 
         img = Image.new("RGB", (512, 512))
         ref = Image.new("RGB", (224, 224), (128, 128, 128))
-        res = engine.generate_page(img, {
-            "prompt": "foo",
-            "reference_image": ref,
-            "generation_profile": "aggressive",
-            "quality_mode": "balanced",
-        })
+        with patch.object(engine, "_is_psychedelic_output", return_value=False):
+            res = engine.generate_page(img, {
+                "prompt": "foo",
+                "reference_image": ref,
+                "generation_profile": "aggressive",
+                "quality_mode": "balanced",
+            })
 
         assert res is not None
         assert sched_cls.from_config.called

@@ -244,6 +244,10 @@ class MaskProcessor:
             # Aplica dilatação em personagens de fundo (não o primeiro),
             # mas evita invadir área já ocupada pelo foreground.
             if idx > 0:  # Não é o personagem mais à frente
+                if front_union is not None:
+                    # Garante que a máscara base não invade o foreground
+                    mask_bool = np.logical_and(mask_bool, np.logical_not(front_union))
+                    
                 dilated = self.apply_dilation((mask_bool.astype(np.uint8) * 255), self.overlap_dilation) > 0
                 if front_union is not None:
                     dilated = np.logical_and(dilated, np.logical_not(front_union))
