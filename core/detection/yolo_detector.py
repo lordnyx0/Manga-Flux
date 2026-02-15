@@ -34,8 +34,9 @@ try:
         DEVICE, YOLO_CONFIDENCE, 
         CONTEXT_INFLATION_FACTOR, VERBOSE
     )
-except ImportError:
-    # Fallback para execução standalone
+except (ImportError, AttributeError):
+    # Fallback para execução standalone ou quando os atributos não existem em settings
+    import torch
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     YOLO_CONFIDENCE = 0.3
     CONTEXT_INFLATION_FACTOR = 1.5

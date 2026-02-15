@@ -12,6 +12,7 @@ import torch
 import os
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
+VERBOSE = True
 
 
 # ============================================================================
@@ -341,6 +342,10 @@ MASK_MORPH_CLOSE_KERNEL = 3   # Kernel para morphological close
 MASK_EROSION_PIXELS = 2       # Pixels para erosão em contatos
 MASK_EDGE_BLUR_SIGMA = 0.5    # Sigma do blur gaussiano nas bordas
 MASK_OVERLAP_DILATION = 1     # Dilatação para garantir overlap mínimo
+
+# Mask Quality Gate (ADR 004)
+MASK_MIN_AREA_RATIO = 0.001    # Área mínima relativa para aceitar máscara
+MASK_MAX_COMPONENTS = 10       # Número máximo de componentes conectados isolados
 
 # Fallback
 SAM2_FALLBACK_TO_BBOX = True  # Se SAM falhar, usar BBox automático
