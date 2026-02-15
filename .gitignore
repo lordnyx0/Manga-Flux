@@ -38,10 +38,11 @@ output/
 logs/
 uploads/
 models/
-*.txt
 *.log
 !requirements.txt
 !README.md
+!*report*.txt
+!*result*.txt
 
 # OS
 .DS_Store
