@@ -1,28 +1,61 @@
 # Manga-Flux: The First Specialist Manga Colorization Engine (v1.0)
 
-Manga-Flux is a high-performance image colorization pipeline designed for manga and doujinshi. It leverages the state-of-the-art **Flux.1-Dev** architecture and a specialized LoRA trained on character-consistent triplets to deliver professional-grade results.
+Manga-Flux é um pipeline de colorização com arquitetura **Two-Pass**:
+
+- **Pass1**: análise, máscara de texto e contrato de metadata.
+- **Pass2**: geração usando engine (Flux mock atualmente no bootstrap).
+
+> Estado atual da restauração: Pass1/Pass2 estão operacionais em modo local com fallback, com validação de artefatos em lote.
 
 ## 🌟 Key Features
 
-- **Flux Specialist**: Built natively for Flux.1-Dev with specialist LoRA integration.
-- **Global Coherence**: Optimized for single-pass generation to maintain color consistency across the entire page.
-- **VRAM Optimized**: Native support for **NF4 (4-bit)** quantization, requiring only 12GB VRAM.
-- **Text Preservation**: Intelligent YOLO-based masking ensures text and speech bubbles remain pristine.
-- **Two-Pass Protocol**: Decoupled analysis (Pass 1) and generation (Pass 2) for maximum flexibility.
+- **Flux Specialist Path**: estrutura preparada para engine Flux dedicada.
+- **Two-Pass Contract**: `metadata/page_{NNN}.meta.json` validado antes do Pass2.
+- **Runmeta por página**:
+  - Pass1: `page_{NNN}.meta.pass1.runmeta.json`
+  - Pass2: `page_{NNN}_colorized.runmeta.json`
+- **Validação automática de artefatos**: script para checagem de contrato e linkage Pass1→Pass2.
 
-## 🛠️ Getting Started
+## 🛠️ Bootstrap local rápido
 
-### 1. Requirements
-Ensure you have Python 3.10+ and a CUDA-capable GPU (12GB+ VRAM recommended).
+### 1) Verificar dependências do Pass1
+
 ```bash
-pip install torch diffusers transformers accelerate bitsandbytes peft pyyaml
+python scripts/pass1_dependency_report.py
 ```
 
-### 2. Model Setup
-Manga-Flux requires the Flux.1-Dev weights and the specialized Manga Colorizer LoRA.
-- Update `configs/flux.yaml` with sua LoRA local.
+### 2) Executar smoke integrado (3 páginas sintéticas)
 
-### 3. Execution
 ```bash
-python run_pass2_local.py --meta path/to/page.meta.json --engine flux
+bash scripts/recovery_batch_smoke.sh
 ```
+
+Esse comando:
+
+1. cria 3 páginas sintéticas a partir de `data/dummy_manga_test.png`;
+2. roda Pass1 em lote;
+3. roda Pass2 para cada página;
+4. valida os artefatos com `scripts/validate_two_pass_outputs.py`.
+
+### 3) Executar batch real local (Pass1->Pass2)
+
+```bash
+python run_two_pass_batch_local.py \
+  --input-dir data/pages_bw \
+  --style-reference data/style_ref.png \
+  --metadata-output metadata \
+  --masks-output outputs/pass1/masks \
+  --pass2-output outputs/pass2 \
+  --chapter-id chapter_001 \
+  --engine flux
+```
+
+## 📄 Contrato Pass1→Pass2
+
+Documentação do contrato em:
+
+- `metadata/README.md`
+
+Validador usado pelo Pass2:
+
+- `core/utils/meta_validator.py`
