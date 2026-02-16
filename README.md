@@ -1,37 +1,28 @@
-# MangaAutoColor Pro v3.0.1
+# Manga-Flux: The First Specialist Manga Colorization Engine (v1.0)
 
-> Colorização automática de mangás com preservação de personagens e limpeza de balões (AVQV Verified) usando Stable Diffusion 1.5 + ControlNet + IP-Adapter.
+Manga-Flux is a high-performance image colorization pipeline designed for manga and doujinshi. It leverages the state-of-the-art **Flux.1-Dev** architecture and a specialized LoRA trained on character-consistent triplets to deliver professional-grade results.
 
-## Documentação
+## 🌟 Key Features
 
-Toda a documentação está organizada na pasta [`docs/`](docs/):
+- **Flux Specialist**: Built natively for Flux.1-Dev with specialist LoRA integration.
+- **Global Coherence**: Optimized for single-pass generation to maintain color consistency across the entire page.
+- **VRAM Optimized**: Native support for **NF4 (4-bit)** quantization, requiring only 12GB VRAM.
+- **Text Preservation**: Intelligent YOLO-based masking ensures text and speech bubbles remain pristine.
+- **Two-Pass Protocol**: Decoupled analysis (Pass 1) and generation (Pass 2) for maximum flexibility.
 
-| Documento | Descrição |
-|-----------|-----------|
-| [README.md](docs/README.md) | Documentação completa do projeto |
-| [CHANGELOG.md](docs/CHANGELOG.md) | Histórico de alterações |
-| [PROGRESSO.md](docs/PROGRESSO.md) | Progresso de desenvolvimento |
-| [Plano.md](docs/Plano.md) | Arquitetura e planejamento |
-| [DEBUG_MODE.md](docs/DEBUG_MODE.md) | Guia do modo debug |
-| [API.md](docs/API.md) | Documentação da API |
-| [SETUP.md](docs/SETUP.md) | Guia de instalação |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Arquitetura técnica |
-| [REGIONAL_IP_ADAPTER.md](docs/REGIONAL_IP_ADAPTER.md) | Sistema de injeção regional de personagens |
-| [AVQV_QUALITY_GUIDE.md](docs/guides/AVQV_QUALITY_GUIDE.md) | Guia de validação de qualidade visual |
-| [COLOR_REFERENCES.md](docs/COLOR_REFERENCES.md) | Guia de referências de cor |
+## 🛠️ Getting Started
 
-## Início Rápido
-
-## Início Rápido
-
+### 1. Requirements
+Ensure you have Python 3.10+ and a CUDA-capable GPU (12GB+ VRAM recommended).
 ```bash
-# 1. Instalar dependências e baixar modelos (SD 1.5 + ControlNet)
-scripts\windows\install.bat
-
-# 2. Iniciar servidor API (Localhost:8000)
-scripts\windows\run.bat
+pip install torch diffusers transformers accelerate bitsandbytes peft pyyaml
 ```
 
-## Licença
+### 2. Model Setup
+Manga-Flux requires the Flux.1-Dev weights and the specialized Manga Colorizer LoRA.
+- Update `configs/flux.yaml` with sua LoRA local.
 
-MIT License - veja [docs/README.md](docs/README.md) para detalhes.
+### 3. Execution
+```bash
+python run_pass2_local.py --meta path/to/page.meta.json --engine flux
+```
