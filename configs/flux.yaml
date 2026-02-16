@@ -1,0 +1,20 @@
+# Flux Configuration
+
+model:
+  # Base Flux.1 [dev] - Will download approx 24GB or use local folder
+  base_path: "black-forest-labs/FLUX.1-dev"
+  
+  # LoRA Specialist (Local) - Norian_Rii Specialist
+  lora_path: "models/loras/" 
+  weight_name: "colorMangaKlein_9B.safetensors"
+  quantization: "nf4" # Recommended for 12GB VRAM (bitsandbytes)
+
+generation:
+  num_inference_steps: 25
+  guidance_scale: 3.5
+  lora_scale: 0.9
+  max_sequence_length: 512
+
+device:
+  use_cuda: true
+  offload_to_cpu: true # Recomendado para 12GB VRAM
