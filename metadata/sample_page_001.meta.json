@@ -1,8 +1,0 @@
-{
-  "page_num": 1,
-  "page_image": "data/dummy_manga_test.png",
-  "page_seed": 123456,
-  "page_prompt": "manga page mock test",
-  "style_reference": "data/dummy_manga_test.png",
-  "text_mask": "outputs/test_run/masks/page_001_text.png"
-}
