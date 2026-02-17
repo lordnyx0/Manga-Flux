@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manga-Flux Companion</title>
+    <style>
+      :root {
+        --bg: #f3f4f6;
+        --panel: #ffffff;
+        --text: #1f2937;
+        --muted: #6b7280;
+        --border: #d1d5db;
+        --primary: #2563eb;
+        --danger: #dc2626;
+        --success: #15803d;
+      }
+      :root[data-theme="dark"] {
+        --bg: #0f172a;
+        --panel: #111827;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --border: #334155;
+        --primary: #60a5fa;
+        --danger: #f87171;
+        --success: #4ade80;
+      }
+      body {
+        font-family: Inter, Arial, sans-serif;
+        margin: 10px;
+        width: 390px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px;
+        margin-bottom: 8px;
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      h3 { margin: 0; font-size: 16px; }
+      .row { margin-bottom: 8px; }
+      label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+      input, select, button, textarea {
+        width: 100%;
+        padding: 8px;
+        box-sizing: border-box;
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      button {
+        cursor: pointer;
+        background: var(--primary);
+        color: white;
+        border: none;
+        font-weight: 600;
+      }
+      button.secondary { background: #475569; }
+      button.danger { background: var(--danger); }
+      .ok { color: var(--success); }
+      .err { color: var(--danger); }
+      pre {
+        white-space: pre-wrap;
+        background: rgba(127,127,127,0.12);
+        padding: 8px;
+        border-radius: 8px;
+        max-height: 160px;
+        overflow: auto;
+      }
+      details { margin-top: 8px; }
+      ul { margin: 6px 0; padding-left: 18px; max-height: 120px; overflow: auto; }
+      .thumb-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      .thumb-item {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        background: rgba(127,127,127,0.08);
+      }
+      .thumb-item img {
+        width: 100%;
+        height: 76px;
+        object-fit: cover;
+        display: block;
+      }
+      .thumb-actions {
+        padding: 4px;
+      }
+      .thumb-actions button {
+        padding: 4px 6px;
+        font-size: 11px;
+      }
+      .line {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .status-small { font-size: 12px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div class="card header">
+      <h3>Manga-Flux Companion</h3>
+      <select id="themeSelect" style="width:140px;">
+        <option value="auto">Tema: Auto</option>
+        <option value="light">Tema: Claro</option>
+        <option value="dark">Tema: Escuro</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="row"><label for="apiBase">API Base URL</label><input id="apiBase" type="text" value="http://127.0.0.1:8765" /></div>
+      <div class="row"><label for="apiToken">API Token (opcional)</label><input id="apiToken" type="password" value="" /></div>
+      <div class="line">
+        <button id="saveBtn" class="secondary">Salvar URL/Token</button>
+        <button id="healthBtn">Checar /health</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <details open>
+        <summary>Pipeline capítulo (Pass1 + Pass2)</summary>
+        <div class="line row">
+          <div><label for="mangaId">manga_id</label><input id="mangaId" value="manga_demo" /></div>
+          <div><label for="chapterId">chapter_id</label><input id="chapterId" value="chapter_001" /></div>
+        </div>
+        <div class="row"><label for="styleReferenceUrl">style_reference_url</label><input id="styleReferenceUrl" placeholder="https://.../style.png" /></div>
+        <div class="line row">
+          <button id="captureImagesBtn" class="secondary">Capturar imagens da aba</button>
+          <button id="clearImagesBtn" class="danger">Limpar imagens</button>
+        </div>
+        <div class="row status-small" id="imagesCount">0 imagens selecionadas</div>
+        <div class="thumb-grid row" id="thumbGrid"></div>
+        <div class="line row">
+          <div><label for="engine">engine</label><select id="engine"><option value="dummy">dummy</option><option value="flux">flux</option></select></div>
+          <div><label for="strength">strength</label><input id="strength" type="number" step="0.01" value="1.0" /></div>
+        </div>
+        <div class="row"><label for="outputRoot">output_root</label><input id="outputRoot" value="output" /></div>
+        <button id="runChapterBtn">POST /v1/pipeline/run_chapter</button>
+      </details>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary>Executar Pass2 (single page)</summary>
+        <div class="row"><label for="metaPath">meta_path</label><input id="metaPath" value="metadata/page_001.meta.json" /></div>
+        <div class="row"><label for="outputDir">output_dir</label><input id="outputDir" value="outputs/api/pass2" /></div>
+        <button id="runBtn">POST /v1/pass2/run</button>
+      </details>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary>Executar Pass2 (batch)</summary>
+        <div class="row"><label for="metadataDir">metadata_dir</label><input id="metadataDir" value="metadata" /></div>
+        <div class="row"><label for="batchOutputDir">output_dir</label><input id="batchOutputDir" value="outputs/api/pass2" /></div>
+        <div class="row"><label for="expectedPages">expected_pages (0 para ignorar)</label><input id="expectedPages" type="number" value="3" /></div>
+        <button id="batchBtn">POST /v1/pass2/batch</button>
+      </details>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary>Histórico local (últimas execuções)</summary>
+        <ul id="historyList"></ul>
+        <button id="clearHistoryBtn" class="danger">Limpar histórico</button>
+      </details>
+    </div>
+
+    <div id="status" class="row"></div>
+    <pre id="output">Aguardando ação...</pre>
+    <script src="popup.js"></script>
+  </body>
+</html>
