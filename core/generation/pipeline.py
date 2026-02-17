@@ -134,8 +134,7 @@ class Pass2Generator:
             runmeta["status"] = "failed"
             runmeta["error"] = str(exc)
             runmeta["duration_ms"] = int((time.perf_counter() - t0) * 1000)
-            if debug_dump_json:
-                atomic_write_json(out_meta_path, runmeta, ensure_ascii=False, indent=2)
+            atomic_write_json(out_meta_path, runmeta, ensure_ascii=False, indent=2)
             if self.state_db_path:
                 PipelineStateStore(self.state_db_path).upsert(
                     chapter_id=chapter_id,
@@ -147,8 +146,7 @@ class Pass2Generator:
             raise
 
         runmeta["duration_ms"] = int((time.perf_counter() - t0) * 1000)
-        if debug_dump_json:
-            atomic_write_json(out_meta_path, runmeta, ensure_ascii=False, indent=2)
+        atomic_write_json(out_meta_path, runmeta, ensure_ascii=False, indent=2)
 
         if self.state_db_path:
             PipelineStateStore(self.state_db_path).upsert(

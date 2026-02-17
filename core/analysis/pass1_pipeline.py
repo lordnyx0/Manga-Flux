@@ -153,25 +153,22 @@ def run_pass1_with_report(
         "status": "success",
     }
 
-    metadata_file: Path | None = None
-    runmeta_file: Path | None = None
-    if debug_dump_json:
-        metadata_file = write_pass1_metadata(
-            output_dir=output_metadata_dir,
-            page_num=page_num,
-            page_image=page_image,
-            page_seed=seed,
-            page_prompt=page_prompt,
-            style_reference=style_reference,
-            text_mask=str(mask_file),
-        )
-        runmeta_file = write_pass1_runmeta(
-            metadata_path=metadata_file,
-            mode=mode,
-            fallback_reason=fallback_reason,
-            dependencies=deps,
-            duration_ms=duration_ms,
-        )
+    metadata_file = write_pass1_metadata(
+        output_dir=output_metadata_dir,
+        page_num=page_num,
+        page_image=page_image,
+        page_seed=seed,
+        page_prompt=page_prompt,
+        style_reference=style_reference,
+        text_mask=str(mask_file),
+    )
+    runmeta_file = write_pass1_runmeta(
+        metadata_path=metadata_file,
+        mode=mode,
+        fallback_reason=fallback_reason,
+        dependencies=deps,
+        duration_ms=duration_ms,
+    )
 
     if state_db_path:
         PipelineStateStore(state_db_path).upsert(
