@@ -5,6 +5,8 @@ import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from core.utils.atomic_io import atomic_write_text
+
 try:
     from pydantic import BaseModel, ConfigDict, Field, ValidationError
     PYDANTIC_AVAILABLE = True
@@ -48,7 +50,7 @@ if PYDANTIC_AVAILABLE:
         def dump_json(self, file_path: str | Path) -> Path:
             path = Path(file_path)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(self.model_dump_json(indent=2), encoding="utf-8")
+            atomic_write_text(path, self.model_dump_json(indent=2), encoding="utf-8")
             return path
 
 else:
@@ -92,5 +94,5 @@ else:
         def dump_json(self, file_path: str | Path) -> Path:
             path = Path(file_path)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(self.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+            atomic_write_text(path, json.dumps(self.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
             return path

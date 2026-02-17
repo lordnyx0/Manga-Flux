@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -84,6 +85,33 @@ def _download_to(url: str, dest: Path) -> None:
     with urllib.request.urlopen(url, timeout=30) as response:  # nosec B310 (local tool usage)
         data = response.read()
     dest.write_bytes(data)
+
+
+def _resolve_style_reference(payload: dict[str, Any], root_dir: Path) -> tuple[Path, str]:
+    style_reference_url = str(payload.get("style_reference_url", "")).strip()
+    style_reference_base64 = str(payload.get("style_reference_base64", "")).strip()
+    style_reference_filename = str(payload.get("style_reference_filename", "style_reference.png")).strip()
+
+    if style_reference_base64:
+        clean_name = _slugify(Path(style_reference_filename).stem, "style_reference")
+        suffix = Path(style_reference_filename).suffix.lower() or ".png"
+        if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
+            suffix = ".png"
+        style_path = root_dir / f"{clean_name}{suffix}"
+        style_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            raw = base64.b64decode(style_reference_base64, validate=True)
+        except Exception as exc:
+            raise ValueError("Invalid 'style_reference_base64' payload") from exc
+        style_path.write_bytes(raw)
+        return style_path, "upload"
+
+    if style_reference_url:
+        style_path = root_dir / "style_reference.png"
+        _download_to(style_reference_url, style_path)
+        return style_path, "url"
+
+    raise ValueError("Provide 'style_reference_url' or uploaded 'style_reference_base64'")
 
 
 class MangaFluxAPIHandler(BaseHTTPRequestHandler):
@@ -286,12 +314,10 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
         manga_id = _slugify(str(payload.get("manga_id", "manga_default")), "manga_default")
         chapter_id = _slugify(str(payload.get("chapter_id", "chapter_001")), "chapter_001")
         page_urls = payload.get("page_urls", [])
-        style_reference_url = str(payload.get("style_reference_url", "")).strip()
+        debug_dump_json = bool(payload.get("debug_dump_json", False))
 
         if not isinstance(page_urls, list) or not page_urls:
             return self._send_error(HTTPStatus.BAD_REQUEST, "'page_urls' must be a non-empty list")
-        if not style_reference_url:
-            return self._send_error(HTTPStatus.BAD_REQUEST, "'style_reference_url' is required")
 
         root_dir = Path(str(payload.get("output_root", "output"))) / manga_id / "chapters" / chapter_id
         inputs_dir = root_dir / "inputs"
@@ -301,11 +327,13 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
 
         try:
             root_dir.mkdir(parents=True, exist_ok=True)
-            style_path = root_dir / "style_reference.png"
-            _download_to(style_reference_url, style_path)
+            state_db_path = root_dir / "pipeline_state.db"
+            style_path, style_source = _resolve_style_reference(payload, root_dir)
 
             engine = _make_engine(engine_name)
-            pass2 = Pass2Generator(engine)
+            options = dict(options)
+            options["chapter_id"] = chapter_id
+            pass2 = Pass2Generator(engine, state_db_path=str(state_db_path))
             page_results = []
 
             for i, page_url in enumerate(page_urls, start=1):
@@ -325,14 +353,18 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
                     page_num=i,
                     page_prompt=prompt,
                     chapter_id=chapter_id,
+                    state_db_path=str(state_db_path),
+                    debug_dump_json=debug_dump_json,
                 )
 
-                image_path = pass2.process_page(
-                    meta_path=str(p1.metadata_path),
+                image_path = pass2.process_page_from_state(
+                    chapter_id=chapter_id,
+                    page_num=i,
                     output_dir=str(pass2_dir),
                     strength=strength,
                     seed_override=seed_override,
                     options=options,
+                    debug_dump_json=debug_dump_json,
                 )
 
                 page_results.append(
@@ -356,6 +388,8 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
                     "output_root": str(root_dir),
                     "count": len(page_results),
                     "engine": engine_name,
+                    "style_reference_source": style_source,
+                    "state_db": str(state_db_path),
                     "results": page_results,
                     "timestamp_utc": _utc_now(),
                 },

@@ -16,6 +16,8 @@ def main():
     parser.add_argument("--prompt", default="manga page colorization", help="Prompt base da página")
     parser.add_argument("--chapter-id", default="default", help="ID do capítulo para seed determinística")
     parser.add_argument("--metadata-output", default="metadata", help="Diretório de saída dos .meta.json")
+    parser.add_argument("--state-db", default="metadata/pipeline_state.db", help="SQLite para estado do pipeline")
+    parser.add_argument("--debug-dump-json", action="store_true", help="Se ativo, grava .meta/.runmeta em disco")
 
     args = parser.parse_args()
 
@@ -28,8 +30,13 @@ def main():
             page_num=args.page_num,
             page_prompt=args.prompt,
             chapter_id=args.chapter_id,
+            state_db_path=args.state_db,
+            debug_dump_json=args.debug_dump_json,
         )
-        print(f"\n[SUCESSO] Metadata Pass1 exportada em: {report.metadata_path}")
+        if report.metadata_path:
+            print(f"\n[SUCESSO] Metadata Pass1 exportada em: {report.metadata_path}")
+        else:
+            print("\n[SUCESSO] Metadata Pass1 persistida no SQLite (sem dump JSON)")
         print(f"[INFO] Modo de execução Pass1: {report.mode}")
         if report.fallback_reason:
             print(f"[INFO] Motivo fallback: {report.fallback_reason}")

@@ -56,6 +56,7 @@ MANGA_FLUX_API_TOKEN=seu_token python api/server.py --host 127.0.0.1 --port 8765
 
 - `POST /v1/pipeline/run_chapter`
   - fluxo fim-a-fim Pass1+Pass2 a partir de URLs de imagens
+  - suporta referência de estilo por URL **ou upload (base64)**
   - salva em `output/<manga_id>/chapters/<chapter_id>/...`
 
 Exemplo de body para `run_chapter`:
@@ -65,6 +66,8 @@ Exemplo de body para `run_chapter`:
   "manga_id": "my_manga",
   "chapter_id": "chapter_001",
   "style_reference_url": "https://.../style.png",
+  "style_reference_base64": "<base64 opcional enviado pela extensão>",
+  "style_reference_filename": "style.png",
   "page_urls": [
     "https://.../page1.png",
     "https://.../page2.png"

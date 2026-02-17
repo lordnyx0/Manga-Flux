@@ -13,6 +13,7 @@ from core.analysis.pass1_contract import (
     write_pass1_metadata,
     write_pass1_runmeta,
 )
+from core.pipeline_state_store import PipelineStateStore
 
 logger = logging.getLogger("Pass1Pipeline")
 
@@ -21,7 +22,7 @@ DEFAULT_MASK_TEMPLATE = Path("outputs/test_run/masks/page_001_text.png")
 
 @dataclass
 class Pass1RunReport:
-    metadata_path: Path
+    metadata_path: Path | None
     mask_path: Path
     mode: str  # "ported_pass1" | "template_fallback" | "empty_fallback"
     fallback_reason: str = ""
@@ -123,6 +124,8 @@ def run_pass1_with_report(
     page_num: int,
     page_prompt: str,
     chapter_id: str = "default",
+    state_db_path: str | None = None,
+    debug_dump_json: bool = False,
 ) -> Pass1RunReport:
     t0 = time.perf_counter()
 
@@ -132,26 +135,58 @@ def run_pass1_with_report(
         page_num=page_num,
     )
     seed = deterministic_seed(chapter_id=chapter_id, page_num=page_num)
-
-    metadata_file = write_pass1_metadata(
-        output_dir=output_metadata_dir,
-        page_num=page_num,
-        page_image=page_image,
-        page_seed=seed,
-        page_prompt=page_prompt,
-        style_reference=style_reference,
-        text_mask=str(mask_file),
-    )
-
     duration_ms = int((time.perf_counter() - t0) * 1000)
 
-    runmeta_file = write_pass1_runmeta(
-        metadata_path=metadata_file,
-        mode=mode,
-        fallback_reason=fallback_reason,
-        dependencies=deps,
-        duration_ms=duration_ms,
-    )
+    metadata_payload = {
+        "page_num": int(page_num),
+        "page_image": str(page_image),
+        "page_seed": int(seed),
+        "page_prompt": str(page_prompt),
+        "style_reference": str(style_reference),
+        "text_mask": str(mask_file),
+    }
+    pass1_runmeta_payload = {
+        "mode": mode,
+        "fallback_reason": fallback_reason,
+        "dependencies": deps,
+        "duration_ms": duration_ms,
+        "status": "success",
+    }
+
+    metadata_file: Path | None = None
+    runmeta_file: Path | None = None
+    if debug_dump_json:
+        metadata_file = write_pass1_metadata(
+            output_dir=output_metadata_dir,
+            page_num=page_num,
+            page_image=page_image,
+            page_seed=seed,
+            page_prompt=page_prompt,
+            style_reference=style_reference,
+            text_mask=str(mask_file),
+        )
+        runmeta_file = write_pass1_runmeta(
+            metadata_path=metadata_file,
+            mode=mode,
+            fallback_reason=fallback_reason,
+            dependencies=deps,
+            duration_ms=duration_ms,
+        )
+
+    if state_db_path:
+        PipelineStateStore(state_db_path).upsert(
+            chapter_id=chapter_id,
+            page_num=page_num,
+            stage="pass1",
+            status="success",
+            metadata={
+                "pass1_metadata": metadata_payload,
+                "pass1_runmeta": pass1_runmeta_payload,
+                "metadata_path": str(metadata_file) if metadata_file else "",
+                "runmeta_path": str(runmeta_file) if runmeta_file else "",
+                "mask_path": str(mask_file),
+            },
+        )
 
     return Pass1RunReport(
         metadata_path=metadata_file,
@@ -172,7 +207,9 @@ def run_pass1(
     page_num: int,
     page_prompt: str,
     chapter_id: str = "default",
-) -> Path:
+    state_db_path: str | None = None,
+    debug_dump_json: bool = False,
+) -> Path | None:
     return run_pass1_with_report(
         page_image=page_image,
         style_reference=style_reference,
@@ -181,4 +218,6 @@ def run_pass1(
         page_num=page_num,
         page_prompt=page_prompt,
         chapter_id=chapter_id,
+        state_db_path=state_db_path,
+        debug_dump_json=debug_dump_json,
     ).metadata_path
