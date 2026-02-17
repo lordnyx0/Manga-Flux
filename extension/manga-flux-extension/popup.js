@@ -40,6 +40,8 @@ const MIN_CAPTURE_HEIGHT = 320;
 
 let chapterPageItems = [];
 let styleReferenceUpload = null;
+let captureSourceUrl = '';
+let captureCookieHeader = '';
 
 function applyTheme(themeMode) {
   let mode = themeMode;
@@ -279,10 +281,28 @@ healthBtn.addEventListener('click', async () => {
   }
 });
 
+
+
+async function buildCookieHeaderForUrl(url) {
+  try {
+    if (!url || !/^https?:\/\//.test(url)) return '';
+    const cookies = await chrome.cookies.getAll({ url });
+    if (!Array.isArray(cookies) || !cookies.length) return '';
+    return cookies
+      .filter((c) => c && c.name && c.value !== undefined)
+      .map((c) => `${c.name}=${c.value}`)
+      .join('; ');
+  } catch (_) {
+    return '';
+  }
+}
+
 captureImagesBtn.addEventListener('click', async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('Aba ativa não encontrada');
+    captureSourceUrl = typeof tab.url === 'string' ? tab.url : '';
+    captureCookieHeader = await buildCookieHeaderForUrl(captureSourceUrl);
 
     const injected = await chrome.scripting.executeScript({
       target: { tabId: tab.id },

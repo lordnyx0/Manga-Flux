@@ -175,6 +175,8 @@ def _download_to(url: str, dest: Path) -> None:
 def _resolve_chapter_pages(payload: dict[str, Any], inputs_dir: Path) -> list[dict[str, str]]:
     page_urls = payload.get("page_urls", [])
     page_uploads = payload.get("page_uploads", [])
+    page_referer = str(payload.get("page_referer", "")).strip()
+    page_cookie_header = str(payload.get("page_cookie_header", "")).strip()
 
     if page_urls is None:
         page_urls = []
@@ -228,7 +230,7 @@ def _resolve_chapter_pages(payload: dict[str, Any], inputs_dir: Path) -> list[di
         page_path = inputs_dir / f"page_{idx:03d}{suffix}"
 
         if source == "url":
-            _download_to(source_value, page_path)
+            _download_to(source_value, page_path, referer=page_referer or None, cookie_header=page_cookie_header or None)
             source_label = source_value
         else:
             raw_bytes = page.get("raw_bytes")
