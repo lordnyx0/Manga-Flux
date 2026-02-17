@@ -9,7 +9,7 @@
 - [x] Endpoint `GET /health` implementado
 - [x] Endpoint `POST /v1/pass2/run` implementado
 - [x] Endpoint `POST /v1/pass2/batch` implementado
-- [x] Endpoint `POST /v1/pipeline/run_chapter` implementado (ingestão via URLs de imagens)
+- [x] Endpoint `POST /v1/pipeline/run_chapter` implementado (ingestão via URLs **e upload local** de imagens)
 - [x] Validação de payload (`engine`, `strength`, `seed_override`, `options`)
 - [x] Compatibilidade com metadata cross-platform (paths `\` / `/`)
 - [x] Autenticação local opcional (token via `MANGA_FLUX_API_TOKEN` + header `X-API-Token`)
@@ -23,6 +23,7 @@
 - [x] Form para `POST /v1/pass2/batch`
 - [x] Exibição de histórico local de execuções (últimos 20 eventos)
 - [x] Captura de imagens da aba atual para envio ao pipeline
+- [x] Upload de imagens locais do PC para envio ao pipeline
 - [x] Tema claro/escuro (com modo automático)
 - [x] Visualização em miniaturas das imagens capturadas
 - [x] Remoção individual de miniaturas
@@ -55,7 +56,7 @@ MANGA_FLUX_API_TOKEN=seu_token python api/server.py --host 127.0.0.1 --port 8765
   - executa Pass2 para todos os `page_*.meta.json` em `metadata_dir`
 
 - `POST /v1/pipeline/run_chapter`
-  - fluxo fim-a-fim Pass1+Pass2 a partir de URLs de imagens
+  - fluxo fim-a-fim Pass1+Pass2 a partir de URLs de imagens ou upload local (base64)
   - suporta referência de estilo por URL **ou upload (base64)**
   - salva em `output/<manga_id>/chapters/<chapter_id>/...`
 
@@ -69,8 +70,10 @@ Exemplo de body para `run_chapter`:
   "style_reference_base64": "<base64 opcional enviado pela extensão>",
   "style_reference_filename": "style.png",
   "page_urls": [
-    "https://.../page1.png",
-    "https://.../page2.png"
+    "https://.../page1.png"
+  ],
+  "page_uploads": [
+    {"filename": "page2.png", "content_base64": "<base64 da imagem local>"}
   ],
   "engine": "dummy",
   "strength": 1.0
@@ -99,7 +102,7 @@ A popup permite:
 - executar pipeline de capítulo (`POST /v1/pipeline/run_chapter`)
 - visualizar histórico local das últimas execuções
 - alternar entre tema claro/escuro/auto
-- visualizar miniaturas das imagens capturadas e remover individualmente
+- visualizar miniaturas das imagens capturadas/upload local e remover individualmente
 - manter configuração/estado após minimizar/fechar popup
 
 ## Análise FAISS
