@@ -8,7 +8,6 @@ const chapterIdInput = $('chapterId');
 const styleReferenceUrlInput = $('styleReferenceUrl');
 const styleReferenceFileInput = $('styleReferenceFile');
 const styleReferenceHintEl = $('styleReferenceHint');
-const pageImagesFileInput = $('pageImagesFile');
 const pageImagesHintEl = $('pageImagesHint');
 const engineInput = $('engine');
 const strengthInput = $('strength');
@@ -36,9 +35,13 @@ const imagesCount = $('imagesCount');
 
 const HISTORY_KEY = 'history';
 const IMAGES_KEY = 'chapterPageItems';
+const MIN_CAPTURE_WIDTH = 320;
+const MIN_CAPTURE_HEIGHT = 320;
 
 let chapterPageItems = [];
 let styleReferenceUpload = null;
+let captureSourceUrl = '';
+let captureCookieHeader = '';
 
 function applyTheme(themeMode) {
   let mode = themeMode;
@@ -72,13 +75,19 @@ function renderThumbnails() {
     img.src = itemData.previewUrl;
     img.alt = `page_${idx + 1}`;
     img.loading = 'lazy';
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', () => {
+      img.src = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="220" height="140"><rect width="100%" height="100%" fill="#20262e"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="12" fill="#d1d5db">Sem preview (bloqueado no site)</text></svg>',
+      );
+    }, { once: true });
 
     const actions = document.createElement('div');
     actions.className = 'thumb-actions';
 
     const removeBtn = document.createElement('button');
     removeBtn.className = 'danger';
-    removeBtn.textContent = itemData.source === 'upload' ? 'Remover local' : 'Remover';
+    removeBtn.textContent = 'Remover';
     removeBtn.addEventListener('click', async () => {
       chapterPageItems = chapterPageItems.filter((_, i) => i !== idx);
       await chrome.storage.local.set({ [IMAGES_KEY]: chapterPageItems });
@@ -94,11 +103,6 @@ function renderThumbnails() {
 }
 
 
-function dataUrlFromBase64(base64, mimeType = 'image/png') {
-  return `data:${mimeType};base64,${base64}`;
-}
-
-
 function normalizeStoredItems(rawItems) {
   if (!Array.isArray(rawItems)) return [];
   return rawItems
@@ -111,16 +115,6 @@ function normalizeStoredItems(rawItems) {
         };
       }
       if (!item || typeof item !== 'object') return null;
-      if (item.source === 'upload' && item.contentBase64) {
-        const mimeType = item.mimeType || 'image/png';
-        return {
-          source: 'upload',
-          filename: item.filename || 'page_upload.png',
-          mimeType,
-          contentBase64: item.contentBase64,
-          previewUrl: dataUrlFromBase64(item.contentBase64, mimeType),
-        };
-      }
       if (item.source === 'url' && typeof item.url === 'string') {
         return {
           source: 'url',
@@ -287,27 +281,49 @@ healthBtn.addEventListener('click', async () => {
   }
 });
 
+
+
+async function buildCookieHeaderForUrl(url) {
+  try {
+    if (!url || !/^https?:\/\//.test(url)) return '';
+    const cookies = await chrome.cookies.getAll({ url });
+    if (!Array.isArray(cookies) || !cookies.length) return '';
+    return cookies
+      .filter((c) => c && c.name && c.value !== undefined)
+      .map((c) => `${c.name}=${c.value}`)
+      .join('; ');
+  } catch (_) {
+    return '';
+  }
+}
+
 captureImagesBtn.addEventListener('click', async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('Aba ativa não encontrada');
+    captureSourceUrl = typeof tab.url === 'string' ? tab.url : '';
+    captureCookieHeader = await buildCookieHeaderForUrl(captureSourceUrl);
 
     const injected = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => Array.from(document.images)
-        .map((img) => img.currentSrc || img.src)
-        .filter((u) => typeof u === 'string' && /^https?:\/\//.test(u)),
+      args: [MIN_CAPTURE_WIDTH, MIN_CAPTURE_HEIGHT],
+      func: (minW, minH) => Array.from(document.images)
+        .map((img) => ({
+          url: img.currentSrc || img.src,
+          width: img.naturalWidth || img.width || 0,
+          height: img.naturalHeight || img.height || 0,
+        }))
+        .filter((item) => typeof item.url === 'string' && /^https?:\/\//.test(item.url))
+        .filter((item) => item.width >= minW && item.height >= minH)
+        .map((item) => item.url),
     });
 
     const urls = injected?.[0]?.result || [];
     const uniqueUrls = [...new Set(urls)];
-    const uploads = chapterPageItems.filter((item) => item.source === 'upload');
-    chapterPageItems = [
-      ...uniqueUrls.map((url) => ({ source: 'url', url, previewUrl: url })),
-      ...uploads,
-    ];
+    chapterPageItems = uniqueUrls.map((url) => ({ source: 'url', url, previewUrl: url }));
     await saveSettings();
     renderThumbnails();
+    pageImagesHintEl.textContent = `Captura ativa: mínimo ${MIN_CAPTURE_WIDTH}x${MIN_CAPTURE_HEIGHT}px. ${uniqueUrls.length} imagem(ns) válida(s).`;
     setStatus(true, `${uniqueUrls.length} imagem(ns) capturada(s) da aba.`);
   } catch (error) {
     setStatus(false, 'Falha ao capturar imagens da aba.');
@@ -322,39 +338,6 @@ clearImagesBtn.addEventListener('click', async () => {
   setStatus(true, 'Lista de imagens limpa.');
 });
 
-pageImagesFileInput.addEventListener('change', async () => {
-  const files = Array.from(pageImagesFileInput.files || []);
-  if (!files.length) {
-    pageImagesHintEl.textContent = 'Você pode combinar imagens da aba com uploads locais do PC.';
-    return;
-  }
-
-  try {
-    const uploads = [];
-    for (const file of files) {
-      const contentBase64 = await fileToBase64(file);
-      uploads.push({
-        source: 'upload',
-        filename: file.name,
-        mimeType: file.type || 'image/png',
-        contentBase64,
-        previewUrl: dataUrlFromBase64(contentBase64, file.type || 'image/png'),
-      });
-    }
-
-    const urls = chapterPageItems.filter((item) => item.source === 'url');
-    chapterPageItems = [...urls, ...uploads];
-    await saveSettings();
-    renderThumbnails();
-    pageImagesHintEl.textContent = `${uploads.length} arquivo(s) local(is) pronto(s) para envio.`;
-    setStatus(true, 'Imagens locais adicionadas com sucesso.');
-  } catch (error) {
-    pageImagesHintEl.textContent = 'Falha ao carregar imagens locais.';
-    setStatus(false, 'Falha ao preparar upload de imagens locais.');
-    outputEl.textContent = String(error);
-  }
-});
-
 runChapterBtn.addEventListener('click', async () => {
   await saveSettings();
   const apiBase = apiBaseInput.value.trim();
@@ -365,13 +348,8 @@ runChapterBtn.addEventListener('click', async () => {
     page_urls: chapterPageItems
       .filter((item) => item.source === 'url')
       .map((item) => item.url),
-    page_uploads: chapterPageItems
-      .filter((item) => item.source === 'upload')
-      .map((item) => ({
-        filename: item.filename,
-        mime_type: item.mimeType,
-        content_base64: item.contentBase64,
-      })),
+    page_referer: captureSourceUrl,
+    page_cookie_header: captureCookieHeader,
     output_root: outputRootInput.value.trim(),
     engine: engineInput.value,
     strength: Number(strengthInput.value || '1.0'),

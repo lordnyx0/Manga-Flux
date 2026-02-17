@@ -7,6 +7,9 @@ import os
 import re
 import traceback
 import urllib.request
+import urllib.parse
+import urllib.error
+import time
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -80,18 +83,199 @@ def _slugify(raw: str, fallback: str) -> str:
     return value or fallback
 
 
-def _download_to(url: str, dest: Path) -> None:
+
+
+DEFAULT_HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    ),
+    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+}
+
+
+def _is_http_url(value: str) -> bool:
+    parsed = urllib.parse.urlparse(value.strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _build_request_headers(url: str, referer: str | None = None, cookie_header: str | None = None) -> dict[str, str]:
+    parsed = urllib.parse.urlparse(url)
+    headers = dict(DEFAULT_HTTP_HEADERS)
+
+    active_referer = ""
+    if referer and _is_http_url(referer):
+        active_referer = referer.strip()
+        headers["Referer"] = active_referer
+    elif parsed.scheme in {"http", "https"} and parsed.netloc:
+        # Some manga hosts require full path referer, fallback to parent path
+        path = parsed.path or "/"
+        parent = path.rsplit("/", 1)[0] or "/"
+        active_referer = f"{parsed.scheme}://{parsed.netloc}{parent}/"
+        headers["Referer"] = active_referer
+
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        headers["Origin"] = f"{parsed.scheme}://{parsed.netloc}"
+
+    headers["Sec-Fetch-Dest"] = "image"
+    headers["Sec-Fetch-Mode"] = "no-cors"
+
+    fetch_site = "cross-site"
+    if active_referer and _is_http_url(active_referer):
+        referer_host = urllib.parse.urlparse(active_referer).netloc.lower()
+        target_host = parsed.netloc.lower()
+        if referer_host == target_host:
+            fetch_site = "same-origin"
+        elif referer_host.split(":")[0].split(".")[-2:] == target_host.split(":")[0].split(".")[-2:]:
+            fetch_site = "same-site"
+    else:
+        fetch_site = "same-site"
+
+    headers["Sec-Fetch-Site"] = fetch_site
+
+    if cookie_header:
+        headers["Cookie"] = cookie_header
+
+    return headers
+
+
+
+
+def _build_html_headers(referer: str | None = None) -> dict[str, str]:
+    headers = dict(DEFAULT_HTTP_HEADERS)
+    headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+    if referer and _is_http_url(referer):
+        headers["Referer"] = referer.strip()
+    return headers
+
+
+def _prime_referer_with_requests_session(session: Any, referer: str | None, timeout: int) -> None:
+    if not referer or not _is_http_url(referer):
+        return
+    try:
+        session.get(referer, headers=_build_html_headers(), timeout=timeout)
+    except Exception:
+        return
+
+
+def _download_with_urllib(url: str, timeout: int = 30, referer: str | None = None, cookie_header: str | None = None) -> bytes:
+    request = urllib.request.Request(url, headers=_build_request_headers(url, referer=referer, cookie_header=cookie_header))
+    with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 (local tool usage)
+        return response.read()
+
+
+def _download_with_cloudscraper(url: str, timeout: int = 30, referer: str | None = None, cookie_header: str | None = None) -> bytes | None:
+    try:
+        import cloudscraper  # type: ignore
+    except Exception:
+        return None
+
+    scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows", "mobile": False})
+    _prime_referer_with_requests_session(scraper, referer, timeout)
+    response = scraper.get(url, headers=_build_request_headers(url, referer=referer, cookie_header=cookie_header), timeout=timeout)
+    response.raise_for_status()
+    return bytes(response.content)
+
+
+def _download_with_requests(url: str, timeout: int = 30, referer: str | None = None, cookie_header: str | None = None) -> bytes | None:
+    try:
+        import requests  # type: ignore
+    except Exception:
+        return None
+
+    with requests.Session() as session:
+        _prime_referer_with_requests_session(session, referer, timeout)
+        response = session.get(url, headers=_build_request_headers(url, referer=referer, cookie_header=cookie_header), timeout=timeout)
+        response.raise_for_status()
+        return bytes(response.content)
+
+
+
+def _download_with_curl_cffi(url: str, timeout: int = 30, referer: str | None = None, cookie_header: str | None = None) -> bytes | None:
+    try:
+        from curl_cffi import requests as curl_requests  # type: ignore
+    except Exception:
+        return None
+
+    with curl_requests.Session(impersonate="chrome124") as session:
+        if referer and _is_http_url(referer):
+            try:
+                session.get(referer, headers=_build_html_headers(), timeout=timeout)
+            except Exception:
+                pass
+
+        response = session.get(
+            url,
+            headers=_build_request_headers(url, referer=referer, cookie_header=cookie_header),
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return bytes(response.content)
+
+
+def _download_to(
+    url: str,
+    dest: Path,
+    referer: str | None = None,
+    cookie_header: str | None = None,
+) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(url, timeout=30) as response:  # nosec B310 (local tool usage)
-        data = response.read()
-    dest.write_bytes(data)
 
+    errors: list[str] = []
+    for attempt in range(1, 4):
+        try:
+            data = _download_with_urllib(url, timeout=30, referer=referer, cookie_header=cookie_header)
+            dest.write_bytes(data)
+            return
+        except urllib.error.HTTPError as exc:
+            errors.append(f"urllib HTTP {exc.code}")
+            if exc.code not in {403, 429, 503}:
+                raise
+        except Exception as exc:  # pragma: no cover - network behavior
+            errors.append(f"urllib {type(exc).__name__}: {exc}")
 
+        if attempt == 1:
+            try:
+                data = _download_with_cloudscraper(url, timeout=30, referer=referer, cookie_header=cookie_header)
+                if data:
+                    dest.write_bytes(data)
+                    return
+            except Exception as exc:  # pragma: no cover - optional dependency
+                errors.append(f"cloudscraper {type(exc).__name__}: {exc}")
+
+        if attempt == 2:
+            try:
+                data = _download_with_requests(url, timeout=30, referer=referer, cookie_header=cookie_header)
+                if data:
+                    dest.write_bytes(data)
+                    return
+            except Exception as exc:  # pragma: no cover - optional dependency
+                errors.append(f"requests {type(exc).__name__}: {exc}")
+
+            try:
+                data = _download_with_curl_cffi(url, timeout=30, referer=referer, cookie_header=cookie_header)
+                if data:
+                    dest.write_bytes(data)
+                    return
+            except Exception as exc:  # pragma: no cover - optional dependency
+                errors.append(f"curl_cffi {type(exc).__name__}: {exc}")
+
+        time.sleep(min(1.5 * attempt, 4.0))
+
+    raise RuntimeError(
+        "Failed to download image after retries. "
+        f"Last attempts: {' | '.join(errors[-4:])}"
+    )
 
 
 def _resolve_chapter_pages(payload: dict[str, Any], inputs_dir: Path) -> list[dict[str, str]]:
     page_urls = payload.get("page_urls", [])
     page_uploads = payload.get("page_uploads", [])
+    page_referer = str(payload.get("page_referer", "")).strip()
+    page_cookie_header = str(payload.get("page_cookie_header", "")).strip()
 
     if page_urls is None:
         page_urls = []
@@ -145,7 +329,7 @@ def _resolve_chapter_pages(payload: dict[str, Any], inputs_dir: Path) -> list[di
         page_path = inputs_dir / f"page_{idx:03d}{suffix}"
 
         if source == "url":
-            _download_to(source_value, page_path)
+            _download_to(source_value, page_path, referer=page_referer or None, cookie_header=page_cookie_header or None)
             source_label = source_value
         else:
             raw_bytes = page.get("raw_bytes")
