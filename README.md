@@ -18,19 +18,13 @@ Manga-Flux é um pipeline de colorização com arquitetura **Two-Pass**:
 
 ## 🛠️ Bootstrap local rápido
 
-### 1) Preparar runtime completo do Pass1
-
-```bash
-bash scripts/setup_pass1_runtime.sh
-```
-
-### 2) Verificar dependências do Pass1
+### 1) Verificar dependências do Pass1
 
 ```bash
 python scripts/pass1_dependency_report.py
 ```
 
-### 3) Executar smoke integrado (3 páginas sintéticas)
+### 2) Executar smoke integrado (3 páginas sintéticas)
 
 ```bash
 bash scripts/recovery_batch_smoke.sh
@@ -43,7 +37,7 @@ Esse comando:
 3. roda Pass2 para cada página;
 4. valida os artefatos com `scripts/validate_two_pass_outputs.py`.
 
-### 4) Executar batch real local (Pass1->Pass2)
+### 3) Executar batch real local (Pass1->Pass2)
 
 ```bash
 python run_two_pass_batch_local.py \

@@ -1,0 +1,12 @@
+{
+  "meta_source": "metadata\\page_003.meta.json",
+  "engine": "DummyEngine",
+  "seed": 437164680,
+  "strength": 1.0,
+  "status": "success",
+  "page_num": 3,
+  "input_image": "data\\pages_bw\\page_003.png",
+  "style_reference": "data/dummy_manga_test.png",
+  "text_mask": "outputs\\pass1\\masks\\page_003_text.png",
+  "pass1_runmeta": "metadata\\page_003.meta.pass1.runmeta.json"
+}

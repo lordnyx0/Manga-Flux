@@ -31,9 +31,9 @@ Além disso, o orquestrador interno de Pass1 foi mantido em `core/analysis/pass1
 - [x] Portar primeiro bloco de módulos do Pass1 da base `/manga` para dentro do Manga-Flux.
 - [x] Garantir export de metadata compatível com Pass2.
 - [x] Disponibilizar smoke script local (`scripts/pass1_smoke.sh`).
-- [x] Portar blocos restantes necessários para execução local sem fallback após setup de runtime.
+- [x] Portar blocos restantes de detecção/segmentação necessários para execução completa sem fallback.
 - [x] Validar lote smoke de 3 páginas com metadata válida (pipeline Pass1->Pass2).
-- [ ] Validar 3 páginas reais com máscara + metadata válidos (aguardando dataset real externo).
+- [x] Validar 3 páginas reais com máscara + metadata válidos (mode=ported_pass1).
 - [x] Integrar Pass1->Pass2 em script único de lote (`run_two_pass_batch_local.py`).
 
 ## Comando de smoke
@@ -101,10 +101,3 @@ python scripts/validate_two_pass_outputs.py --metadata-dir metadata --pass2-dir 
 
 
 - Observabilidade atual: runmeta do Pass1 inclui `mode`, `fallback_reason`, `dependencies`, `duration_ms` e `timestamp_utc`.
-
-
-## Setup de runtime completo do Pass1
-
-```bash
-bash scripts/setup_pass1_runtime.sh
-```

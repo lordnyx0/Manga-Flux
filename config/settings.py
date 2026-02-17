@@ -24,7 +24,7 @@ except Exception:  # pragma: no cover - portability fallback
 # ============================================================================
 # HARDWARE E PERFORMANCE
 # ============================================================================
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DEVICE = "cpu"  # Force CPU to avoid CUDA compatibility issues
 DTYPE = torch.bfloat16 if DEVICE == "cuda" else torch.float32
 
 # Otimizações para 12GB VRAM

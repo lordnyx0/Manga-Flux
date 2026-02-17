@@ -31,14 +31,13 @@ from dataclasses import dataclass, field
 
 try:
     from config.settings import (
-        DEVICE, YOLO_CONFIDENCE, YOLO_MODEL_ID,
+        DEVICE, YOLO_CONFIDENCE, 
         CONTEXT_INFLATION_FACTOR, VERBOSE
     )
 except ImportError:
     # Fallback para execução standalone
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     YOLO_CONFIDENCE = 0.3
-    YOLO_MODEL_ID = "deepghs/manga109_yolo"
     CONTEXT_INFLATION_FACTOR = 1.5
     VERBOSE = True
 
@@ -95,14 +94,12 @@ class YOLODetector:
     def __init__(
         self,
         model_path: str = "./data/models/manga109_yolo.onnx",
-        model_id: str = YOLO_MODEL_ID,
         device: str = DEVICE,
         conf_threshold: float = YOLO_CONFIDENCE
     ):
         self.model_path = Path(model_path)
         self.device = device
         self.conf_threshold = conf_threshold
-        self.model_id = model_id
         self.model = None
         self.class_map = {}  # Será populado após carregar modelo
         
@@ -132,25 +129,20 @@ class YOLODetector:
                 "Execute: pip install ultralytics"
             )
         
-        model_source = str(self.model_path)
         if not self.model_path.exists():
-            if VERBOSE:
-                print(
-                    f"[YOLODetector] Modelo local não encontrado em {self.model_path}. "
-                    f"Tentando carregar por model_id: {self.model_id}"
-                )
-            model_source = self.model_id
-
-        print(f"[YOLODetector] Carregando modelo: {model_source}")
-
+            raise RuntimeError(
+                f"Modelo não encontrado: {self.model_path}\n\n"
+                f"Baixe o modelo com:\n"
+                f"  python scripts/download_models.py --models yolo_manga"
+            )
+        
+        print(f"[YOLODetector] Carregando modelo: {self.model_path}")
+        
         try:
-            self.model = YOLO(model_source, task='detect')
+            self.model = YOLO(str(self.model_path), task='detect')
             print(f"[YOLODetector] Modelo carregado com sucesso!")
         except Exception as e:
-            raise RuntimeError(
-                f"Falha ao carregar modelo: {e}. "
-                f"Tente baixar o modelo manualmente para {self.model_path}"
-            )
+            raise RuntimeError(f"Falha ao carregar modelo: {e}")
     
     def _introspect_classes(self):
         """
