@@ -7,6 +7,9 @@ import os
 import re
 import traceback
 import urllib.request
+import urllib.parse
+import urllib.error
+import time
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -80,13 +83,93 @@ def _slugify(raw: str, fallback: str) -> str:
     return value or fallback
 
 
+
+
+DEFAULT_HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    ),
+    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+}
+
+
+def _download_with_urllib(url: str, timeout: int = 30) -> bytes:
+    parsed = urllib.parse.urlparse(url)
+    headers = dict(DEFAULT_HTTP_HEADERS)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
+
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 (local tool usage)
+        return response.read()
+
+
+def _download_with_cloudscraper(url: str, timeout: int = 30) -> bytes | None:
+    try:
+        import cloudscraper  # type: ignore
+    except Exception:
+        return None
+
+    scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows", "mobile": False})
+    response = scraper.get(url, headers=DEFAULT_HTTP_HEADERS, timeout=timeout)
+    response.raise_for_status()
+    return bytes(response.content)
+
+
+def _download_with_requests(url: str, timeout: int = 30) -> bytes | None:
+    try:
+        import requests  # type: ignore
+    except Exception:
+        return None
+
+    response = requests.get(url, headers=DEFAULT_HTTP_HEADERS, timeout=timeout)
+    response.raise_for_status()
+    return bytes(response.content)
+
 def _download_to(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(url, timeout=30) as response:  # nosec B310 (local tool usage)
-        data = response.read()
-    dest.write_bytes(data)
 
+    errors: list[str] = []
+    for attempt in range(1, 4):
+        try:
+            data = _download_with_urllib(url, timeout=30)
+            dest.write_bytes(data)
+            return
+        except urllib.error.HTTPError as exc:
+            errors.append(f"urllib HTTP {exc.code}")
+            if exc.code not in {403, 429, 503}:
+                raise
+        except Exception as exc:  # pragma: no cover - network behavior
+            errors.append(f"urllib {type(exc).__name__}: {exc}")
 
+        if attempt == 1:
+            try:
+                data = _download_with_cloudscraper(url, timeout=30)
+                if data:
+                    dest.write_bytes(data)
+                    return
+            except Exception as exc:  # pragma: no cover - optional dependency
+                errors.append(f"cloudscraper {type(exc).__name__}: {exc}")
+
+        if attempt == 2:
+            try:
+                data = _download_with_requests(url, timeout=30)
+                if data:
+                    dest.write_bytes(data)
+                    return
+            except Exception as exc:  # pragma: no cover - optional dependency
+                errors.append(f"requests {type(exc).__name__}: {exc}")
+
+        time.sleep(min(1.5 * attempt, 4.0))
+
+    raise RuntimeError(
+        "Failed to download image after retries. "
+        f"Last attempts: {' | '.join(errors[-4:])}"
+    )
 
 
 def _resolve_chapter_pages(payload: dict[str, Any], inputs_dir: Path) -> list[dict[str, str]]:
