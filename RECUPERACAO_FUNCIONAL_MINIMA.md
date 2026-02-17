@@ -14,12 +14,12 @@ Objetivo da fase: restaurar execução ponta-a-ponta do Pass1+Pass2 com contrato
 - [x] Adicionar CLI `run_pass1_local.py` para gerar máscara+metadata no próprio projeto.
 - [x] Portar bloco inicial do núcleo de detecção/máscara do `/manga` para `core/analysis`.
 - [x] Garantir acesso local ao código-base `/manga` via snapshot (`scripts/bootstrap_manga_source.sh`).
-- [ ] Completar porte do núcleo de detecção/máscara do `/manga` para execução plena sem fallback (dependências devem aparecer como OK no report).
+- [x] Completar porte do núcleo de detecção/máscara do `/manga` para execução plena sem fallback (dependências OK no report).
 - [x] Adicionar smoke test manual de contrato + pipeline (Pass1 e Pass2).
 - [x] Validar execução em lote de 3 páginas em smoke local (script `scripts/recovery_batch_smoke.sh`).
 - [x] Integrar Pass1->Pass2 em script único de lote (`run_two_pass_batch_local.py`).
 - [x] Validar artefatos e contrato em lote com `scripts/validate_two_pass_outputs.py`.
-- [ ] Validar execução em lote de 3 páginas com metadata real de Pass1 (dataset real).
+- [x] Validar execução em lote de 3 páginas com metadata real de Pass1 (dataset real, mode=ported_pass1).
 
 ## Critério de saída da Fase A
 
@@ -28,7 +28,7 @@ Objetivo da fase: restaurar execução ponta-a-ponta do Pass1+Pass2 com contrato
   - `page_{NNN}_colorized.png`
   - `page_{NNN}_colorized.runmeta.json`
 
-Status atual: **atingido para smoke de 1 página**, com fallback quando dependências do Pass1 completo não estão disponíveis no ambiente.
+Status atual: **atingido para 3 páginas reais**, com mode=ported_pass1 (sem fallback).
 
 ## Comandos de validação local (smoke)
 

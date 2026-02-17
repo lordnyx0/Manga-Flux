@@ -188,3 +188,50 @@ Para alinhar com seu plano original e evitar nova regressão:
 O projeto **não está pronto** no estado atual e apresenta sinais claros de “apagamento” de partes centrais da arquitetura planejada. Ainda assim, a migração é plenamente **recuperável e viável** se você reintroduzir disciplina de contrato, modularidade por interface e pipeline incremental (mock → real → QA).
 
 Em termos práticos: **não recomendo tentar “consertar por remendo” o estado atual**. Recomendo executar a recuperação por fases acima e tratar cada fase como critério de aceite formal.
+
+
+---
+
+## 10) Atualização de status (pós-recuperação Fase A)
+
+**Data:** 2026-02-16
+
+A Fase A de recuperação foi **concluída com sucesso**:
+
+- ✅ Árvore base de código restaurada (`core/`, `scripts/`, `config/`)
+- ✅ Contrato Pass1→Pass2 implementado (`core/analysis/pass1_contract.py`, `core/utils/meta_validator.py`)
+- ✅ Interface estável de engine (`core/generation/interfaces.py`)
+- ✅ FluxEngine mock + DummyEngine implementados (`core/generation/engines/`)
+- ✅ Entrypoints funcionais:
+  - `run_pass1_local.py` (Pass1 standalone)
+  - `run_two_pass_batch_local.py` (Pass1→Pass2 integrado)
+- ✅ Dependências do Pass1 resolvidas (torch, numpy, PIL, cv2, YOLO, SAM)
+- ✅ Execução em lote de 3 páginas reais com `mode=ported_pass1` (sem fallback)
+- ✅ Validação contratual passando (`scripts/validate_two_pass_outputs.py`)
+
+**Comandos de validação:**
+```bash
+# Verificar dependências
+python scripts/pass1_dependency_report.py
+
+# Executar lote Pass1→Pass2
+python run_two_pass_batch_local.py \
+  --input-dir data/pages_bw \
+  --style-reference data/dummy_manga_test.png \
+  --metadata-output metadata \
+  --masks-output outputs/pass1/masks \
+  --pass2-output outputs/pass2 \
+  --chapter-id test_chapter \
+  --engine dummy
+
+# Validar artefatos
+python scripts/validate_two_pass_outputs.py \
+  --metadata-dir metadata \
+  --pass2-dir outputs/pass2 \
+  --expected-pages 3
+```
+
+**Próximos passos (Fase B):**
+- Integrar Flux real no engine
+- QA automatizado + processo humano
+- Hardening e observabilidade completa
