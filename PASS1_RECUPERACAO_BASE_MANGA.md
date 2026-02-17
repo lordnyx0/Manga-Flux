@@ -34,6 +34,9 @@ Além disso, o orquestrador interno de Pass1 foi mantido em `core/analysis/pass1
 - [x] Portar blocos restantes necessários para execução local sem fallback após setup de runtime.
 - [x] Validar lote smoke de 3 páginas com metadata válida (pipeline Pass1->Pass2).
 - [ ] Validar 3 páginas reais com máscara + metadata válidos (aguardando dataset real externo).
+- [x] Portar blocos restantes de detecção/segmentação necessários para execução completa sem fallback.
+- [x] Validar lote smoke de 3 páginas com metadata válida (pipeline Pass1->Pass2).
+- [x] Validar 3 páginas reais com máscara + metadata válidos (mode=ported_pass1).
 - [x] Integrar Pass1->Pass2 em script único de lote (`run_two_pass_batch_local.py`).
 
 ## Comando de smoke

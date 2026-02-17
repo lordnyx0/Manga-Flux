@@ -97,6 +97,39 @@ python scripts/test_api_bootstrap_contract.py
 - Extensão (especificação inicial): `DOCS/EXTENSAO.md`
 - Recuperação funcional mínima: `RECUPERACAO_FUNCIONAL_MINIMA.md`
 
+
+### 1) Verificar dependências do Pass1
+
+```bash
+python scripts/pass1_dependency_report.py
+```
+
+### 2) Executar smoke integrado (3 páginas sintéticas)
+
+```bash
+bash scripts/recovery_batch_smoke.sh
+```
+
+Esse comando:
+
+1. cria 3 páginas sintéticas a partir de `data/dummy_manga_test.png`;
+2. roda Pass1 em lote;
+3. roda Pass2 para cada página;
+4. valida os artefatos com `scripts/validate_two_pass_outputs.py`.
+
+### 3) Executar batch real local (Pass1->Pass2)
+
+```bash
+python run_two_pass_batch_local.py \
+  --input-dir data/pages_bw \
+  --style-reference data/style_ref.png \
+  --metadata-output metadata \
+  --masks-output outputs/pass1/masks \
+  --pass2-output outputs/pass2 \
+  --chapter-id chapter_001 \
+  --engine flux
+```
+
 ## 📄 Contrato Pass1→Pass2
 
 Documentação do contrato em:

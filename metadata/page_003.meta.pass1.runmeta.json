@@ -1,0 +1,19 @@
+{
+  "metadata_file": "metadata\\page_003.meta.json",
+  "mode": "ported_pass1",
+  "fallback_reason": "",
+  "dependencies": {
+    "torch": true,
+    "numpy": true,
+    "PIL": true,
+    "cv2": true,
+    "ultralytics": true,
+    "transformers": true,
+    "insightface": false,
+    "sklearn": true,
+    "skimage": true
+  },
+  "duration_ms": 1132,
+  "timestamp_utc": "2026-02-17T00:46:55.113169+00:00",
+  "status": "success"
+}
