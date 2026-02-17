@@ -87,6 +87,82 @@ def _download_to(url: str, dest: Path) -> None:
     dest.write_bytes(data)
 
 
+
+
+def _resolve_chapter_pages(payload: dict[str, Any], inputs_dir: Path) -> list[dict[str, str]]:
+    page_urls = payload.get("page_urls", [])
+    page_uploads = payload.get("page_uploads", [])
+
+    if page_urls is None:
+        page_urls = []
+    if page_uploads is None:
+        page_uploads = []
+
+    if not isinstance(page_urls, list):
+        raise ValueError("'page_urls' must be a list")
+    if not isinstance(page_uploads, list):
+        raise ValueError("'page_uploads' must be a list")
+    if not page_urls and not page_uploads:
+        raise ValueError("Provide at least one page via 'page_urls' or 'page_uploads'")
+
+    inputs_dir.mkdir(parents=True, exist_ok=True)
+    pages: list[dict[str, str]] = []
+
+    for page_url in page_urls:
+        if not isinstance(page_url, str) or not page_url.strip():
+            raise ValueError("Invalid item in 'page_urls'")
+        pages.append({"source": "url", "source_value": page_url.strip()})
+
+    for upload in page_uploads:
+        if not isinstance(upload, dict):
+            raise ValueError("Invalid item in 'page_uploads'")
+        filename = str(upload.get("filename", "page_upload.png")).strip()
+        content_base64 = str(upload.get("content_base64", "")).strip()
+        if not content_base64:
+            raise ValueError("Each 'page_uploads' item must include 'content_base64'")
+
+        suffix = Path(filename).suffix.lower() or ".png"
+        if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
+            suffix = ".png"
+
+        clean_stem = _slugify(Path(filename).stem, "page_upload")
+        try:
+            raw = base64.b64decode(content_base64, validate=True)
+        except Exception as exc:
+            raise ValueError("Invalid base64 in 'page_uploads'") from exc
+
+        pages.append({
+            "source": "upload",
+            "filename": f"{clean_stem}{suffix}",
+            "raw_bytes": raw,
+        })
+
+    resolved: list[dict[str, str]] = []
+    for idx, page in enumerate(pages, start=1):
+        source = str(page["source"])
+        source_value = str(page.get("source_value", ""))
+        suffix = Path(str(page.get("filename", "page.png"))).suffix.lower() or ".png"
+        page_path = inputs_dir / f"page_{idx:03d}{suffix}"
+
+        if source == "url":
+            _download_to(source_value, page_path)
+            source_label = source_value
+        else:
+            raw_bytes = page.get("raw_bytes")
+            if not isinstance(raw_bytes, (bytes, bytearray)):
+                raise ValueError("Invalid upload bytes")
+            page_path.write_bytes(bytes(raw_bytes))
+            source_label = str(page.get("filename", f"upload_{idx:03d}{suffix}"))
+
+        resolved.append({
+            "source": source,
+            "source_label": source_label,
+            "input_path": str(page_path),
+        })
+
+    return resolved
+
+
 def _resolve_style_reference(payload: dict[str, Any], root_dir: Path) -> tuple[Path, str]:
     style_reference_url = str(payload.get("style_reference_url", "")).strip()
     style_reference_base64 = str(payload.get("style_reference_base64", "")).strip()
@@ -115,7 +191,7 @@ def _resolve_style_reference(payload: dict[str, Any], root_dir: Path) -> tuple[P
 
 
 class MangaFluxAPIHandler(BaseHTTPRequestHandler):
-    server_version = "MangaFluxAPI/0.4"
+    server_version = "MangaFluxAPI/0.5"
 
     def _send_error(self, status: int, message: str, details: str | None = None) -> None:
         payload: dict[str, Any] = {
@@ -145,7 +221,7 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
                 {
                     "status": "ok",
                     "service": "manga-flux-api",
-                    "version": "0.4",
+                    "version": "0.5",
                     "token_required": bool(os.getenv("MANGA_FLUX_API_TOKEN", "").strip()),
                     "timestamp_utc": _utc_now(),
                 },
@@ -313,11 +389,7 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
 
         manga_id = _slugify(str(payload.get("manga_id", "manga_default")), "manga_default")
         chapter_id = _slugify(str(payload.get("chapter_id", "chapter_001")), "chapter_001")
-        page_urls = payload.get("page_urls", [])
         debug_dump_json = bool(payload.get("debug_dump_json", False))
-
-        if not isinstance(page_urls, list) or not page_urls:
-            return self._send_error(HTTPStatus.BAD_REQUEST, "'page_urls' must be a non-empty list")
 
         root_dir = Path(str(payload.get("output_root", "output"))) / manga_id / "chapters" / chapter_id
         inputs_dir = root_dir / "inputs"
@@ -335,13 +407,10 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
             options["chapter_id"] = chapter_id
             pass2 = Pass2Generator(engine, state_db_path=str(state_db_path))
             page_results = []
+            chapter_pages = _resolve_chapter_pages(payload, inputs_dir)
 
-            for i, page_url in enumerate(page_urls, start=1):
-                if not isinstance(page_url, str) or not page_url.strip():
-                    raise ValueError(f"Invalid page URL at index {i}")
-
-                page_path = inputs_dir / f"page_{i:03d}.png"
-                _download_to(page_url.strip(), page_path)
+            for i, chapter_page in enumerate(chapter_pages, start=1):
+                page_path = Path(chapter_page["input_path"])
 
                 mask_path = pass1_mask_dir / f"page_{i:03d}_text.png"
                 prompt = f"manga page colorization page={i} manga={manga_id} chapter={chapter_id}"
@@ -370,7 +439,8 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
                 page_results.append(
                     {
                         "page_num": i,
-                        "source_url": page_url,
+                        "source": chapter_page["source"],
+                        "source_label": chapter_page["source_label"],
                         "input_path": str(page_path),
                         "metadata_path": str(p1.metadata_path),
                         "pass1_runmeta": str(p1.runmeta_path),

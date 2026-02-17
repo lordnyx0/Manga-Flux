@@ -8,6 +8,8 @@ const chapterIdInput = $('chapterId');
 const styleReferenceUrlInput = $('styleReferenceUrl');
 const styleReferenceFileInput = $('styleReferenceFile');
 const styleReferenceHintEl = $('styleReferenceHint');
+const pageImagesFileInput = $('pageImagesFile');
+const pageImagesHintEl = $('pageImagesHint');
 const engineInput = $('engine');
 const strengthInput = $('strength');
 const outputRootInput = $('outputRoot');
@@ -33,9 +35,9 @@ const thumbGrid = $('thumbGrid');
 const imagesCount = $('imagesCount');
 
 const HISTORY_KEY = 'history';
-const IMAGES_KEY = 'chapterPageUrls';
+const IMAGES_KEY = 'chapterPageItems';
 
-let chapterPageUrls = [];
+let chapterPageItems = [];
 let styleReferenceUpload = null;
 
 function applyTheme(themeMode) {
@@ -60,14 +62,14 @@ function getHeaders() {
 
 function renderThumbnails() {
   thumbGrid.innerHTML = '';
-  imagesCount.textContent = `${chapterPageUrls.length} imagens selecionadas`;
+  imagesCount.textContent = `${chapterPageItems.length} imagens selecionadas`;
 
-  chapterPageUrls.forEach((url, idx) => {
+  chapterPageItems.forEach((itemData, idx) => {
     const item = document.createElement('div');
     item.className = 'thumb-item';
 
     const img = document.createElement('img');
-    img.src = url;
+    img.src = itemData.previewUrl;
     img.alt = `page_${idx + 1}`;
     img.loading = 'lazy';
 
@@ -76,10 +78,10 @@ function renderThumbnails() {
 
     const removeBtn = document.createElement('button');
     removeBtn.className = 'danger';
-    removeBtn.textContent = 'Remover';
+    removeBtn.textContent = itemData.source === 'upload' ? 'Remover local' : 'Remover';
     removeBtn.addEventListener('click', async () => {
-      chapterPageUrls = chapterPageUrls.filter((_, i) => i !== idx);
-      await chrome.storage.local.set({ [IMAGES_KEY]: chapterPageUrls });
+      chapterPageItems = chapterPageItems.filter((_, i) => i !== idx);
+      await chrome.storage.local.set({ [IMAGES_KEY]: chapterPageItems });
       renderThumbnails();
       await saveSettings();
     });
@@ -89,6 +91,46 @@ function renderThumbnails() {
     item.appendChild(actions);
     thumbGrid.appendChild(item);
   });
+}
+
+
+function dataUrlFromBase64(base64, mimeType = 'image/png') {
+  return `data:${mimeType};base64,${base64}`;
+}
+
+
+function normalizeStoredItems(rawItems) {
+  if (!Array.isArray(rawItems)) return [];
+  return rawItems
+    .map((item) => {
+      if (typeof item === 'string') {
+        return {
+          source: 'url',
+          url: item,
+          previewUrl: item,
+        };
+      }
+      if (!item || typeof item !== 'object') return null;
+      if (item.source === 'upload' && item.contentBase64) {
+        const mimeType = item.mimeType || 'image/png';
+        return {
+          source: 'upload',
+          filename: item.filename || 'page_upload.png',
+          mimeType,
+          contentBase64: item.contentBase64,
+          previewUrl: dataUrlFromBase64(item.contentBase64, mimeType),
+        };
+      }
+      if (item.source === 'url' && typeof item.url === 'string') {
+        return {
+          source: 'url',
+          url: item.url,
+          previewUrl: item.url,
+        };
+      }
+      return null;
+    })
+    .filter(Boolean);
 }
 
 
@@ -143,7 +185,7 @@ async function saveSettings() {
     metadataDir: metadataDirInput.value.trim(),
     batchOutputDir: batchOutputDirInput.value.trim(),
     expectedPages: expectedPagesInput.value,
-    [IMAGES_KEY]: chapterPageUrls,
+    [IMAGES_KEY]: chapterPageItems,
   });
 }
 
@@ -151,7 +193,7 @@ async function loadSettings() {
   const keys = [
     'apiBase', 'apiToken', 'theme', 'mangaId', 'chapterId', 'styleReferenceUrl',
     'engine', 'strength', 'outputRoot', 'metaPath', 'outputDir', 'metadataDir',
-    'batchOutputDir', 'expectedPages', HISTORY_KEY, IMAGES_KEY,
+    'batchOutputDir', 'expectedPages', HISTORY_KEY, IMAGES_KEY, 'chapterPageUrls',
   ];
   const data = await chrome.storage.local.get(keys);
 
@@ -172,7 +214,10 @@ async function loadSettings() {
   if (data.batchOutputDir) batchOutputDirInput.value = data.batchOutputDir;
   if (data.expectedPages !== undefined) expectedPagesInput.value = data.expectedPages;
 
-  chapterPageUrls = Array.isArray(data[IMAGES_KEY]) ? data[IMAGES_KEY] : [];
+  const oldUrls = Array.isArray(data.chapterPageUrls)
+    ? data.chapterPageUrls.map((url) => ({ source: 'url', url, previewUrl: url }))
+    : [];
+  chapterPageItems = normalizeStoredItems(data[IMAGES_KEY] || oldUrls);
   renderThumbnails();
   renderHistory(data[HISTORY_KEY] || []);
 }
@@ -255,10 +300,15 @@ captureImagesBtn.addEventListener('click', async () => {
     });
 
     const urls = injected?.[0]?.result || [];
-    chapterPageUrls = [...new Set(urls)];
+    const uniqueUrls = [...new Set(urls)];
+    const uploads = chapterPageItems.filter((item) => item.source === 'upload');
+    chapterPageItems = [
+      ...uniqueUrls.map((url) => ({ source: 'url', url, previewUrl: url })),
+      ...uploads,
+    ];
     await saveSettings();
     renderThumbnails();
-    setStatus(true, `${chapterPageUrls.length} imagem(ns) capturada(s) da aba.`);
+    setStatus(true, `${uniqueUrls.length} imagem(ns) capturada(s) da aba.`);
   } catch (error) {
     setStatus(false, 'Falha ao capturar imagens da aba.');
     outputEl.textContent = String(error);
@@ -266,10 +316,43 @@ captureImagesBtn.addEventListener('click', async () => {
 });
 
 clearImagesBtn.addEventListener('click', async () => {
-  chapterPageUrls = [];
+  chapterPageItems = [];
   await saveSettings();
   renderThumbnails();
   setStatus(true, 'Lista de imagens limpa.');
+});
+
+pageImagesFileInput.addEventListener('change', async () => {
+  const files = Array.from(pageImagesFileInput.files || []);
+  if (!files.length) {
+    pageImagesHintEl.textContent = 'Você pode combinar imagens da aba com uploads locais do PC.';
+    return;
+  }
+
+  try {
+    const uploads = [];
+    for (const file of files) {
+      const contentBase64 = await fileToBase64(file);
+      uploads.push({
+        source: 'upload',
+        filename: file.name,
+        mimeType: file.type || 'image/png',
+        contentBase64,
+        previewUrl: dataUrlFromBase64(contentBase64, file.type || 'image/png'),
+      });
+    }
+
+    const urls = chapterPageItems.filter((item) => item.source === 'url');
+    chapterPageItems = [...urls, ...uploads];
+    await saveSettings();
+    renderThumbnails();
+    pageImagesHintEl.textContent = `${uploads.length} arquivo(s) local(is) pronto(s) para envio.`;
+    setStatus(true, 'Imagens locais adicionadas com sucesso.');
+  } catch (error) {
+    pageImagesHintEl.textContent = 'Falha ao carregar imagens locais.';
+    setStatus(false, 'Falha ao preparar upload de imagens locais.');
+    outputEl.textContent = String(error);
+  }
 });
 
 runChapterBtn.addEventListener('click', async () => {
@@ -279,7 +362,16 @@ runChapterBtn.addEventListener('click', async () => {
     manga_id: mangaIdInput.value.trim(),
     chapter_id: chapterIdInput.value.trim(),
     style_reference_url: styleReferenceUrlInput.value.trim(),
-    page_urls: chapterPageUrls,
+    page_urls: chapterPageItems
+      .filter((item) => item.source === 'url')
+      .map((item) => item.url),
+    page_uploads: chapterPageItems
+      .filter((item) => item.source === 'upload')
+      .map((item) => ({
+        filename: item.filename,
+        mime_type: item.mimeType,
+        content_base64: item.contentBase64,
+      })),
     output_root: outputRootInput.value.trim(),
     engine: engineInput.value,
     strength: Number(strengthInput.value || '1.0'),
