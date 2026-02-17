@@ -35,6 +35,7 @@ def main() -> None:
     parser.add_argument("--input-dir", required=True, help="Diretório com páginas P&B")
     parser.add_argument("--style-reference", required=True, help="Imagem de referência de estilo")
     parser.add_argument("--metadata-output", default="metadata", help="Diretório de saída dos .meta.json")
+    parser.add_argument("--state-db", default="metadata/pipeline_state.db", help="SQLite para estado do pipeline")
     parser.add_argument("--masks-output", default="outputs/pass1/masks", help="Diretório de saída das máscaras")
     parser.add_argument("--pass2-output", default="outputs/pass2", help="Diretório de saída do Pass2")
     parser.add_argument("--chapter-id", default="default", help="ID do capítulo para seed determinística")
@@ -58,6 +59,7 @@ def main() -> None:
         default=[],
         help="Opções extras no formato chave=valor (pode repetir)",
     )
+    parser.add_argument("--debug-dump-json", action="store_true", help="Se ativo, grava .meta/.runmeta em disco")
 
     args = parser.parse_args()
 
@@ -74,9 +76,10 @@ def main() -> None:
         raise SystemExit(f"Nenhuma imagem encontrada em {input_dir}")
 
     pass2_options = parse_options(args.pass2_option)
+    pass2_options["chapter_id"] = args.chapter_id
 
     engine = FluxEngine() if args.engine == "flux" else DummyEngine()
-    pass2 = Pass2Generator(engine)
+    pass2 = Pass2Generator(engine, state_db_path=args.state_db)
 
     print(f"[INFO] Encontradas {len(pages)} páginas em {input_dir}")
 
@@ -94,18 +97,22 @@ def main() -> None:
             page_num=idx,
             page_prompt=prompt,
             chapter_id=args.chapter_id,
+            state_db_path=args.state_db,
+            debug_dump_json=args.debug_dump_json,
         )
 
         seed_override = None
         if args.pass2_seed_offset != 0:
             seed_override = deterministic_seed(args.chapter_id, idx) + args.pass2_seed_offset
 
-        p2_image = pass2.process_page(
-            str(p1.metadata_path),
-            str(pass2_output),
+        p2_image = pass2.process_page_from_state(
+            chapter_id=args.chapter_id,
+            page_num=idx,
+            output_dir=str(pass2_output),
             strength=args.pass2_strength,
             seed_override=seed_override,
             options=pass2_options,
+            debug_dump_json=args.debug_dump_json,
         )
 
         line = (

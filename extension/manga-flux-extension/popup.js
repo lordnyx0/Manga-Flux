@@ -6,6 +6,8 @@ const themeSelect = $('themeSelect');
 const mangaIdInput = $('mangaId');
 const chapterIdInput = $('chapterId');
 const styleReferenceUrlInput = $('styleReferenceUrl');
+const styleReferenceFileInput = $('styleReferenceFile');
+const styleReferenceHintEl = $('styleReferenceHint');
 const engineInput = $('engine');
 const strengthInput = $('strength');
 const outputRootInput = $('outputRoot');
@@ -34,6 +36,7 @@ const HISTORY_KEY = 'history';
 const IMAGES_KEY = 'chapterPageUrls';
 
 let chapterPageUrls = [];
+let styleReferenceUpload = null;
 
 function applyTheme(themeMode) {
   let mode = themeMode;
@@ -88,6 +91,20 @@ function renderThumbnails() {
   });
 }
 
+
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const out = String(reader.result || '');
+      const base64 = out.includes(',') ? out.split(',', 2)[1] : out;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error || new Error('Falha ao ler arquivo'));
+    reader.readAsDataURL(file);
+  });
+}
 async function pushHistory(entry) {
   const data = await chrome.storage.local.get([HISTORY_KEY]);
   const history = Array.isArray(data[HISTORY_KEY]) ? data[HISTORY_KEY] : [];
@@ -180,6 +197,27 @@ async function requestJSON(url, payload, actionName) {
   metadataDirInput, batchOutputDirInput, expectedPagesInput,
 ].forEach((el) => el.addEventListener('change', saveSettings));
 
+
+
+styleReferenceFileInput.addEventListener('change', async () => {
+  const file = styleReferenceFileInput.files?.[0];
+  if (!file) {
+    styleReferenceUpload = null;
+    styleReferenceHintEl.textContent = 'Use URL ou upload local (upload tem prioridade).';
+    return;
+  }
+  try {
+    const base64 = await fileToBase64(file);
+    styleReferenceUpload = { filename: file.name, contentBase64: base64 };
+    styleReferenceHintEl.textContent = `Upload pronto: ${file.name}`;
+  } catch (error) {
+    styleReferenceUpload = null;
+    styleReferenceHintEl.textContent = 'Falha ao ler arquivo de referência.';
+    outputEl.textContent = String(error);
+    setStatus(false, 'Falha ao preparar upload da referência de estilo.');
+  }
+});
+
 themeSelect.addEventListener('change', async () => {
   applyTheme(themeSelect.value);
   await saveSettings();
@@ -247,6 +285,11 @@ runChapterBtn.addEventListener('click', async () => {
     strength: Number(strengthInput.value || '1.0'),
     options: {},
   };
+
+  if (styleReferenceUpload?.contentBase64) {
+    payload.style_reference_base64 = styleReferenceUpload.contentBase64;
+    payload.style_reference_filename = styleReferenceUpload.filename || 'style_reference.png';
+  }
   try {
     await requestJSON(`${apiBase}/v1/pipeline/run_chapter`, payload, 'POST /v1/pipeline/run_chapter');
   } catch (error) {

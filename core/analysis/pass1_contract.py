@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 from core.analysis.metadata_contract import Pass1Metadata
+from core.utils.atomic_io import atomic_write_json
 
 
 def write_pass1_metadata(
@@ -60,5 +60,5 @@ def write_pass1_runmeta(
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "status": "success",
     }
-    runmeta_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(runmeta_path, payload, ensure_ascii=False, indent=2)
     return runmeta_path

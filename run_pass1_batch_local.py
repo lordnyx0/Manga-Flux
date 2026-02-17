@@ -17,6 +17,7 @@ def main():
     parser.add_argument("--input-dir", required=True, help="Diretório com páginas P&B")
     parser.add_argument("--style-reference", required=True, help="Imagem de referência de estilo")
     parser.add_argument("--metadata-output", default="metadata", help="Diretório de saída dos .meta.json")
+    parser.add_argument("--state-db", default="metadata/pipeline_state.db", help="SQLite para estado do pipeline")
     parser.add_argument("--masks-output", default="outputs/pass1/masks", help="Diretório de saída das máscaras")
     parser.add_argument("--chapter-id", default="default", help="ID do capítulo para seed determinística")
     parser.add_argument("--start-page", type=int, default=1, help="Número inicial da paginação")
@@ -25,6 +26,7 @@ def main():
         default="manga page colorization page={page_num}",
         help="Template de prompt (usa {page_num} e {filename})",
     )
+    parser.add_argument("--debug-dump-json", action="store_true", help="Se ativo, grava .meta/.runmeta em disco")
 
     args = parser.parse_args()
 
@@ -52,6 +54,8 @@ def main():
             page_num=idx,
             page_prompt=prompt,
             chapter_id=args.chapter_id,
+            state_db_path=args.state_db,
+            debug_dump_json=args.debug_dump_json,
         )
         line = (
             f"[OK] page={idx:03d} meta={report.metadata_path} runmeta={report.runmeta_path} "

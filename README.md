@@ -74,5 +74,5 @@ Guia operacional (com comandos de batch e validação):
 - Guia: `DOCS/API_EXTENSION.md`
 - Checklist API + extensão: seção `Checklist (API + extensão)` em `DOCS/API_EXTENSION.md`
 - API com token opcional e extensão com execução single+batch documentadas em `DOCS/API_EXTENSION.md`
-- Pipeline completo via API: `POST /v1/pipeline/run_chapter` (ingestão por URLs)
+- Pipeline completo via API: `POST /v1/pipeline/run_chapter` (ingestão por URLs + upload de referência de estilo via extensão)
 - Análise de adaptação FAISS: `DOCS/FAISS_ADAPTACAO_MANGA_FLUX.md`
