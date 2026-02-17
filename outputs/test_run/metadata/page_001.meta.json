@@ -1,8 +1,0 @@
-{
-  "page_num": 1,
-  "page_image": "tests/data/page_001.png",
-  "page_seed": 1918611493,
-  "page_prompt": "test_scene",
-  "style_reference": "tests/data/style_ref.png",
-  "text_mask": "outputs/test_run\\masks\\page_001_text.png"
-}
