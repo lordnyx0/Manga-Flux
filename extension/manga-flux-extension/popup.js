@@ -330,7 +330,6 @@ runChapterBtn.addEventListener('click', async () => {
     page_urls: chapterPageItems
       .filter((item) => item.source === 'url')
       .map((item) => item.url),
-    page_referer: captureSourceUrl,
     output_root: outputRootInput.value.trim(),
     engine: engineInput.value,
     strength: Number(strengthInput.value || '1.0'),

@@ -97,83 +97,46 @@ DEFAULT_HTTP_HEADERS = {
 }
 
 
-def _is_http_url(value: str) -> bool:
-    parsed = urllib.parse.urlparse(value.strip())
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
-
-
-def _build_request_headers(url: str, referer: str | None = None) -> dict[str, str]:
+def _download_with_urllib(url: str, timeout: int = 30) -> bytes:
     parsed = urllib.parse.urlparse(url)
     headers = dict(DEFAULT_HTTP_HEADERS)
-    if referer and _is_http_url(referer):
-        headers["Referer"] = referer.strip()
-    elif parsed.scheme in {"http", "https"} and parsed.netloc:
-        # Some manga hosts require full path referer, fallback to site root then parent path
-        path = parsed.path or "/"
-        parent = path.rsplit("/", 1)[0] or "/"
-        headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}{parent}/"
-
     if parsed.scheme in {"http", "https"} and parsed.netloc:
-        headers["Origin"] = f"{parsed.scheme}://{parsed.netloc}"
+        headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
 
-    headers["Sec-Fetch-Dest"] = "image"
-    headers["Sec-Fetch-Mode"] = "no-cors"
-    headers["Sec-Fetch-Site"] = "same-site"
-    return headers
-
-
-def _download_with_urllib(url: str, timeout: int = 30, referer: str | None = None) -> bytes:
-    request = urllib.request.Request(url, headers=_build_request_headers(url, referer=referer))
+    request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 (local tool usage)
         return response.read()
 
 
-def _download_with_cloudscraper(url: str, timeout: int = 30, referer: str | None = None) -> bytes | None:
+def _download_with_cloudscraper(url: str, timeout: int = 30) -> bytes | None:
     try:
         import cloudscraper  # type: ignore
     except Exception:
         return None
 
     scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows", "mobile": False})
-    response = scraper.get(url, headers=_build_request_headers(url, referer=referer), timeout=timeout)
+    response = scraper.get(url, headers=DEFAULT_HTTP_HEADERS, timeout=timeout)
     response.raise_for_status()
     return bytes(response.content)
 
 
-def _download_with_requests(url: str, timeout: int = 30, referer: str | None = None) -> bytes | None:
+def _download_with_requests(url: str, timeout: int = 30) -> bytes | None:
     try:
         import requests  # type: ignore
     except Exception:
         return None
 
-    response = requests.get(url, headers=_build_request_headers(url, referer=referer), timeout=timeout)
+    response = requests.get(url, headers=DEFAULT_HTTP_HEADERS, timeout=timeout)
     response.raise_for_status()
     return bytes(response.content)
 
-
-
-def _download_with_curl_cffi(url: str, timeout: int = 30, referer: str | None = None) -> bytes | None:
-    try:
-        from curl_cffi import requests as curl_requests  # type: ignore
-    except Exception:
-        return None
-
-    response = curl_requests.get(
-        url,
-        headers=_build_request_headers(url, referer=referer),
-        timeout=timeout,
-        impersonate="chrome124",
-    )
-    response.raise_for_status()
-    return bytes(response.content)
-
-def _download_to(url: str, dest: Path, referer: str | None = None) -> None:
+def _download_to(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     errors: list[str] = []
     for attempt in range(1, 4):
         try:
-            data = _download_with_urllib(url, timeout=30, referer=referer)
+            data = _download_with_urllib(url, timeout=30)
             dest.write_bytes(data)
             return
         except urllib.error.HTTPError as exc:
@@ -185,7 +148,7 @@ def _download_to(url: str, dest: Path, referer: str | None = None) -> None:
 
         if attempt == 1:
             try:
-                data = _download_with_cloudscraper(url, timeout=30, referer=referer)
+                data = _download_with_cloudscraper(url, timeout=30)
                 if data:
                     dest.write_bytes(data)
                     return
@@ -194,20 +157,12 @@ def _download_to(url: str, dest: Path, referer: str | None = None) -> None:
 
         if attempt == 2:
             try:
-                data = _download_with_requests(url, timeout=30, referer=referer)
+                data = _download_with_requests(url, timeout=30)
                 if data:
                     dest.write_bytes(data)
                     return
             except Exception as exc:  # pragma: no cover - optional dependency
                 errors.append(f"requests {type(exc).__name__}: {exc}")
-
-            try:
-                data = _download_with_curl_cffi(url, timeout=30, referer=referer)
-                if data:
-                    dest.write_bytes(data)
-                    return
-            except Exception as exc:  # pragma: no cover - optional dependency
-                errors.append(f"curl_cffi {type(exc).__name__}: {exc}")
 
         time.sleep(min(1.5 * attempt, 4.0))
 
