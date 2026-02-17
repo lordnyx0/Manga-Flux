@@ -4,6 +4,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from core.analysis.metadata_contract import Pass1Metadata
+
 
 def write_pass1_metadata(
     output_dir: str | Path,
@@ -18,18 +20,17 @@ def write_pass1_metadata(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    metadata = {
-        "page_num": int(page_num),
-        "page_image": str(page_image),
-        "page_seed": int(page_seed),
-        "page_prompt": str(page_prompt),
-        "style_reference": str(style_reference),
-        "text_mask": str(text_mask),
-    }
+    metadata = Pass1Metadata(
+        page_num=int(page_num),
+        page_image=str(page_image),
+        page_seed=int(page_seed),
+        page_prompt=str(page_prompt),
+        style_reference=str(style_reference),
+        text_mask=str(text_mask),
+    )
 
     file_path = output_dir / f"page_{int(page_num):03d}.meta.json"
-    file_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
-    return file_path
+    return metadata.dump_json(file_path)
 
 
 def deterministic_seed(chapter_id: str, page_num: int) -> int:

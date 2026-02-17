@@ -11,7 +11,7 @@ import torch
 import numpy as np
 from PIL import Image
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Callable
 import cv2
 from dataclasses import dataclass, field
 
@@ -22,6 +22,7 @@ from config.settings import (
     ZBUFFER_ENABLED, ZBUFFER_WEIGHT_Y, ZBUFFER_WEIGHT_AREA, ZBUFFER_WEIGHT_TYPE
 )
 from core.constants import DetectionClass, SceneType
+from core.detection.interfaces import ObjectDetector
 from core.utils.image_ops import create_context_crop, extract_canny_edges
 from core.logging.setup import get_logger
 
@@ -77,6 +78,8 @@ class Pass1Analyzer:
         device: str = DEVICE,
         dtype: torch.dtype = DTYPE,
         confidence_threshold: float = YOLO_CONFIDENCE,
+        detector: Optional[ObjectDetector] = None,
+        detector_factory: Optional[Callable[[], ObjectDetector]] = None,
         # ADR 004: Configurações de segmentação
         enable_sam2: bool = SAM2_ENABLED,
         sam2_model_size: str = SAM2_MODEL_SIZE,
@@ -86,6 +89,7 @@ class Pass1Analyzer:
         self.device = device
         self.dtype = dtype
         self.confidence_threshold = confidence_threshold
+        self._detector_factory = detector_factory
         
         # ADR 004: Configurações
         self.enable_sam2 = enable_sam2
@@ -94,7 +98,7 @@ class Pass1Analyzer:
         self.enable_zbuffer = enable_zbuffer
         
         # Componentes (lazy loading)
-        self._yolo_detector = None
+        self._yolo_detector = detector
         self._nms_processor = None
         self._identity_encoder = None
         self._palette_extractor = None
@@ -110,11 +114,15 @@ class Pass1Analyzer:
     def _get_yolo_detector(self):
         """Lazy loading do YOLO"""
         if self._yolo_detector is None:
-            from .detection.yolo_detector import YOLODetector
-            self._yolo_detector = YOLODetector(
-                device=self.device,
-                conf_threshold=self.confidence_threshold
-            )
+            if self._detector_factory is not None:
+                self._yolo_detector = self._detector_factory()
+            else:
+                from .detection.yolo_detector import YOLODetector
+
+                self._yolo_detector = YOLODetector(
+                    device=self.device,
+                    conf_threshold=self.confidence_threshold,
+                )
         return self._yolo_detector
     
     def _get_nms_processor(self):

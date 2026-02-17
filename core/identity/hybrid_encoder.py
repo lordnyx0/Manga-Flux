@@ -25,6 +25,8 @@ from dataclasses import dataclass
 import hashlib
 import json
 
+from core.identity.vector_store import SQLiteVectorStore
+
 try:
     import insightface
     from insightface.app import FaceAnalysis
@@ -40,8 +42,7 @@ except ImportError:
 
 from config.settings import (
     DEVICE, DTYPE, INSIGHTFACE_MODEL, FACE_DETECTION_SIZE,
-    EMBEDDINGS_DIR, EMBEDDING_DIM, EMBEDDING_CACHE_FORMAT,
-    MAX_CACHED_EMBEDDINGS, VERBOSE
+    EMBEDDINGS_DIR, MAX_CACHED_EMBEDDINGS, VERBOSE
 )
 
 
@@ -83,7 +84,7 @@ class HybridIdentitySystem:
     O sistema prioriza:
     1. ArcFace + CLIP: Se rosto detectado, usa ambos
     2. CLIP apenas: Se sem rosto, usa apenas CLIP
-    3. Cache: Todos embeddings são cacheados em disco (.pt)
+    3. Cache: Todos embeddings são persistidos no vector store local (SQLite)
     
     Args:
         device: Dispositivo para inferência
@@ -104,6 +105,7 @@ class HybridIdentitySystem:
         self.use_insightface = use_insightface and INSIGHTFACE_AVAILABLE
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.vector_store = SQLiteVectorStore(self.cache_dir / "identity_cache.sqlite3")
         
         # Componentes (lazy loading)
         self._face_analyzer = None
@@ -201,9 +203,8 @@ class HybridIdentitySystem:
             cached = self._memory_cache[cache_key]
             return cached.clip_embedding, cached.face_embedding
         
-        # Verifica cache em disco
-        disk_cache_path = self._get_cache_path(cache_key)
-        if disk_cache_path.exists():
+        # Verifica cache persistente (SQLite)
+        if self.vector_store.get(cache_key) is not None:
             try:
                 features = self._load_from_disk(cache_key)
                 self._memory_cache[cache_key] = features
@@ -225,7 +226,7 @@ class HybridIdentitySystem:
         # Limita tamanho do cache em memória
         self._prune_memory_cache()
         
-        return features.clip_embedding, features.method
+        return features.clip_embedding, features.face_embedding
     
     def _extract_features(
         self,
@@ -341,57 +342,37 @@ class HybridIdentitySystem:
         
         return hashlib.md5(img_bytes).hexdigest()
     
-    def _get_cache_path(self, cache_key: str) -> Path:
-        """Retorna path para arquivo de cache"""
-        return self.cache_dir / f"{cache_key}.{EMBEDDING_CACHE_FORMAT}"
-    
     def _save_to_disk(self, cache_key: str, features: IdentityFeatures):
-        """
-        Salva features em disco (.pt format).
-        
-        Args:
-            cache_key: Chave do cache
-            features: IdentityFeatures a salvar
-        """
-        cache_path = self._get_cache_path(cache_key)
-        
-        # Salva tensor CLIP e metadados
-        save_dict = {
-            'clip_embedding': features.clip_embedding,
-            'face_embedding': features.face_embedding,
+        """Salva features no vector store local (SQLite)."""
+        payload = {
+            'face_embedding': features.face_embedding.tolist() if features.face_embedding is not None else None,
             'face_bbox': features.face_bbox,
             'confidence': features.confidence,
             'method': features.method,
-            'character_id': features.character_id
+            'character_id': features.character_id,
         }
-        
-        torch.save(save_dict, cache_path)
+        self.vector_store.upsert(
+            vector_id=cache_key,
+            tensor=features.clip_embedding,
+            metadata_json=json.dumps(payload, ensure_ascii=False),
+        )
     
     def _load_from_disk(self, cache_key: str) -> IdentityFeatures:
-        """
-        Carrega features do disco.
-        
-        Args:
-            cache_key: Chave do cache
-            
-        Returns:
-            IdentityFeatures carregadas
-        """
-        cache_path = self._get_cache_path(cache_key)
-        
-        # Cache files may contain numpy arrays, so we need weights_only=False
-        import warnings
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=FutureWarning, message=".*weights_only.*")
-            data = torch.load(cache_path, map_location='cpu', weights_only=False)
-        
+        """Carrega features do SQLite."""
+        row = self.vector_store.get(cache_key)
+        if row is None:
+            raise FileNotFoundError(f"Embedding not found in SQLite cache: {cache_key}")
+
+        clip_embedding, metadata_json = row
+        metadata = json.loads(metadata_json)
+        face_embedding = metadata.get('face_embedding')
         return IdentityFeatures(
-            clip_embedding=data['clip_embedding'].to(self.dtype),
-            face_embedding=data.get('face_embedding'),
-            face_bbox=data.get('face_bbox'),
-            confidence=data.get('confidence', 0.0),
-            method=data.get('method', 'unknown'),
-            character_id=data.get('character_id')
+            clip_embedding=clip_embedding.to(self.dtype),
+            face_embedding=np.array(face_embedding) if face_embedding is not None else None,
+            face_bbox=metadata.get('face_bbox'),
+            confidence=metadata.get('confidence', 0.0),
+            method=metadata.get('method', 'unknown'),
+            character_id=metadata.get('character_id'),
         )
     
     def _prune_memory_cache(self):
@@ -449,7 +430,7 @@ class HybridIdentitySystem:
             'cache_hits': self._cache_hits,
             'cache_misses': self._cache_misses,
             'hit_rate': hit_rate,
-            'disk_cache_size': len(list(self.cache_dir.glob('*.pt')))
+            'disk_cache_size': self.vector_store.count()
         }
     
     def clear_memory_cache(self):
@@ -475,17 +456,8 @@ class HybridIdentitySystem:
 
 
 class IdentityCache:
-    """
-    Cache persistente de identidades para um capítulo inteiro.
-    
-    Gerencia o mapeamento de personagens detectados para seus embeddings,
-    garantindo consistência de identidade entre páginas.
-    
-    Args:
-        chapter_id: ID único do capítulo
-        cache_dir: Diretório base para cache
-    """
-    
+    """Cache persistente de identidades para um capítulo inteiro."""
+
     def __init__(
         self,
         chapter_id: str,
@@ -494,24 +466,22 @@ class IdentityCache:
         self.chapter_id = chapter_id
         self.cache_dir = Path(cache_dir) / chapter_id
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        
+        self.vector_store = SQLiteVectorStore(self.cache_dir / "chapter_vectors.sqlite3")
+
         self._character_map: Dict[str, Dict] = {}
         self._next_char_id = 0
-        
-        # Carrega mapeamento existente se houver
+
         self._load_mapping()
-    
+
     def _load_mapping(self):
-        """Carrega mapeamento de personagens do disco"""
         mapping_file = self.cache_dir / "character_map.json"
         if mapping_file.exists():
             with open(mapping_file, 'r') as f:
                 data = json.load(f)
                 self._character_map = data.get('characters', {})
                 self._next_char_id = data.get('next_id', 0)
-    
+
     def _save_mapping(self):
-        """Salva mapeamento de personagens no disco"""
         mapping_file = self.cache_dir / "character_map.json"
         with open(mapping_file, 'w') as f:
             json.dump({
@@ -519,131 +489,80 @@ class IdentityCache:
                 'next_id': self._next_char_id,
                 'chapter_id': self.chapter_id
             }, f, indent=2)
-    
+
     def register_character(
         self,
         embedding: torch.Tensor,
         detection_bbox: Tuple[int, int, int, int],
         page_num: int
     ) -> str:
-        """
-        Registra um novo personagem ou retorna ID existente se similar.
-        
-        Args:
-            embedding: Embedding CLIP do personagem
-            detection_bbox: Bounding box da detecção
-            page_num: Número da página
-            
-        Returns:
-            ID único do personagem (char_001, char_002, etc)
-        """
-        # Verifica similaridade com personagens existentes
         char_id = self._find_similar_character(embedding)
-        
+
         if char_id is None:
-            # Novo personagem
             char_id = f"char_{self._next_char_id:03d}"
             self._next_char_id += 1
-            
+
             self._character_map[char_id] = {
                 'first_seen_page': page_num,
-                'embedding_path': f"{char_id}.pt",
+                'embedding_id': char_id,
                 'detections': []
             }
-            
-            # Salva embedding de referência
-            embedding_path = self.cache_dir / f"{char_id}.pt"
-            torch.save({
-                'embedding': embedding,
-                'created_at': str(pd.Timestamp.now()) if 'pd' in globals() else None
-            }, embedding_path)
-        
-        # Registra detecção
+
+            self.vector_store.upsert(
+                vector_id=char_id,
+                tensor=embedding,
+                metadata_json=json.dumps({'created_by': 'IdentityCache'}, ensure_ascii=False),
+                chapter_id=self.chapter_id,
+            )
+
         self._character_map[char_id]['detections'].append({
             'page': page_num,
             'bbox': detection_bbox
         })
-        
+
         self._save_mapping()
-        
         return char_id
-    
+
     def _find_similar_character(
         self,
         embedding: torch.Tensor,
         threshold: float = 0.90
     ) -> Optional[str]:
-        """
-        Procura personagem similar no cache.
-        
-        Args:
-            embedding: Embedding CLIP
-            threshold: Threshold de similaridade
-            
-        Returns:
-            ID do personagem similar ou None
-        """
         embedding_norm = F.normalize(embedding, dim=-1)
-        
+
         for char_id, data in self._character_map.items():
-            embedding_path = self.cache_dir / data['embedding_path']
-            if not embedding_path.exists():
+            embedding_id = data.get('embedding_id', char_id)
+            row = self.vector_store.get(embedding_id)
+            if row is None:
                 continue
-            
-            try:
-                import warnings
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore", category=FutureWarning, message=".*weights_only.*")
-                    saved = torch.load(embedding_path, map_location='cpu', weights_only=False)
-                saved_emb = saved['embedding']
-                saved_emb_norm = F.normalize(saved_emb, dim=-1)
-                
-                similarity = torch.dot(
-                    embedding_norm.flatten(),
-                    saved_emb_norm.flatten()
-                ).item()
-                
-                if similarity >= threshold:
-                    return char_id
-            except Exception:
-                continue
-        
+
+            saved_emb, _ = row
+            saved_emb_norm = F.normalize(saved_emb, dim=-1)
+            similarity = torch.dot(
+                embedding_norm.flatten(),
+                saved_emb_norm.flatten()
+            ).item()
+
+            if similarity >= threshold:
+                return char_id
+
         return None
-    
+
     def get_character_embedding(self, char_id: str) -> Optional[torch.Tensor]:
-        """
-        Recupera embedding de um personagem.
-        
-        Args:
-            char_id: ID do personagem
-            
-        Returns:
-            Embedding CLIP ou None
-        """
         if char_id not in self._character_map:
             return None
-        
-        data = self._character_map[char_id]
-        embedding_path = self.cache_dir / data['embedding_path']
-        
-        if not embedding_path.exists():
+
+        embedding_id = self._character_map[char_id].get('embedding_id', char_id)
+        row = self.vector_store.get(embedding_id)
+        if row is None:
             return None
-        
-        try:
-            import warnings
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=FutureWarning, message=".*weights_only.*")
-                saved = torch.load(embedding_path, map_location='cpu', weights_only=False)
-            return saved['embedding']
-        except Exception:
-            return None
-    
+        emb, _ = row
+        return emb
+
     def get_all_characters(self) -> Dict[str, Dict]:
-        """Retorna dicionário com todos os personagens registrados"""
         return self._character_map.copy()
-    
+
     def get_character_count(self) -> int:
-        """Retorna número de personagens únicos"""
         return len(self._character_map)
 
 
