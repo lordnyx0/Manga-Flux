@@ -92,8 +92,8 @@ Escala de status:
 - **Achado:** não existem `tests/visual/run_batch.sh`, `tests/visual/eval.py` e fluxo QA descrito.
 
 ### 7 — Hardening (seed determinística, logs per-page, fallback OOM)
-- **Status:** ❌
-- **Achado:** não encontrados módulos utilitários correspondentes (`utils/seed.py` etc.).
+- **Status:** 🟡
+- **Achado:** seed determinística operacional no contrato Pass1, runmeta do Pass2 com `duration_ms`/`timestamp_utc`/`options`, resumo por lote (`batch_summary.json`) e validação de consistência reforçada; fallback específico para OOM ainda pendente.
 
 ### 8 — Limpeza de legado (arquivar SD/tile RGB fora do caminho crítico)
 - **Status:** ❌ (não verificável)
@@ -101,7 +101,7 @@ Escala de status:
 
 ### 9 — Documentação operacional (`README` + `DOCS/OPERATION.md`)
 - **Status:** 🟡
-- **Achado:** README existe, porém está descritivo/promocional e incompleto para operação real no estado atual; `DOCS/OPERATION.md` não encontrado.
+- **Achado:** README segue ativo e já referencia operação; `DOCS/OPERATION.md` foi adicionado com fluxo local executável, mas ainda faltam cenários avançados de produção/GPU.
 
 ### 10 — Preparar para Qwen (stub + adapter spec)
 - **Status:** ❌
@@ -235,3 +235,47 @@ python scripts/validate_two_pass_outputs.py \
 - Integrar Flux real no engine
 - QA automatizado + processo humano
 - Hardening e observabilidade completa
+
+
+## 11) Atualização incremental (Fase B parcial)
+
+**Data:** 2026-02-17
+
+Avanços incrementais implementados:
+
+- ✅ Pass2 com observabilidade reforçada em runmeta (`duration_ms`, `timestamp_utc`, `options`, `output_image`)
+- ✅ CLI local do Pass2 com controles explícitos de geração (`--strength`, `--seed-override`)
+- ✅ Batch integrado com parâmetros de Pass2 (`--pass2-strength`, `--pass2-seed-offset`, `--pass2-option`)
+- ✅ Geração de resumo por lote (`outputs/pass2/batch_summary.json`)
+- ✅ Guia de operação local publicado (`DOCS/OPERATION.md`)
+- ✅ Validador de artefatos mais robusto (descoberta dinâmica de páginas, consistência de `output_image` e checagem opcional de `batch_summary.json`)
+
+Pendências para completar Fase B:
+
+- Integrar engine Flux real (inferência de produção)
+- Implementar fallback OOM dedicado e telemetria de memória
+- Institucionalizar QA visual automatizado + humano
+
+
+## 12) Atualização incremental (API + extensão)
+
+**Data:** 2026-02-17
+
+Avanços desta iteração:
+
+- ✅ API local mínima implementada (`api/server.py`) com `/health` e `/v1/pass2/run`
+- ✅ Companion extension MV3 iniciada (`extension/manga-flux-extension`) para health-check
+- ✅ Documentação dedicada adicionada (`DOCS/API_EXTENSION.md`)
+
+Pendências seguintes:
+
+- [x] autenticação local opcional (token)
+- [x] endpoint batch na API (`POST /v1/pass2/batch`)
+- [x] extensão com formulário para acionar `/v1/pass2/run`
+- [x] extensão com formulário para acionar `/v1/pass2/batch`
+- [x] histórico local de execuções na extensão
+- [x] pipeline de capítulo via API a partir de URLs de páginas
+- [x] captura de imagens da aba atual na extensão
+- [x] tema claro/escuro e UX de miniaturas com remoção individual
+- [x] persistência de estado da extensão para uso após minimizar/fechar popup
+- [ ] integração FAISS no fluxo online (index/search)

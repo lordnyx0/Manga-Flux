@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Manga-Flux Companion",
+  "version": "0.2.0",
+  "description": "Extensão auxiliar para pipeline API local do Manga-Flux.",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://*/*",
+    "http://*/*"
+  ]
+}

@@ -1,6 +1,8 @@
 import argparse
+import json
 from pathlib import Path
 
+from core.analysis.pass1_contract import deterministic_seed
 from core.analysis.pass1_pipeline import run_pass1_with_report
 from core.generation.engines.dummy_engine import DummyEngine
 from core.generation.engines.flux_engine import FluxEngine
@@ -13,6 +15,19 @@ def discover_pages(input_dir: Path) -> list[Path]:
     pages = [p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() in VALID_EXT]
     pages.sort()
     return pages
+
+
+def parse_options(raw_options: list[str]) -> dict[str, str]:
+    options: dict[str, str] = {}
+    for raw in raw_options:
+        if "=" not in raw:
+            raise SystemExit(f"Opção inválida '{raw}'. Use o formato chave=valor.")
+        key, value = raw.split("=", 1)
+        key = key.strip()
+        if not key:
+            raise SystemExit(f"Opção inválida '{raw}': chave vazia.")
+        options[key] = value
+    return options
 
 
 def main() -> None:
@@ -30,6 +45,19 @@ def main() -> None:
         help="Template de prompt (usa {page_num} e {filename})",
     )
     parser.add_argument("--engine", choices=["flux", "dummy"], default="flux", help="Engine do Pass2")
+    parser.add_argument("--pass2-strength", type=float, default=1.0, help="Força usada no Pass2")
+    parser.add_argument(
+        "--pass2-seed-offset",
+        type=int,
+        default=0,
+        help="Offset somado ao seed determinístico da página",
+    )
+    parser.add_argument(
+        "--pass2-option",
+        action="append",
+        default=[],
+        help="Opções extras no formato chave=valor (pode repetir)",
+    )
 
     args = parser.parse_args()
 
@@ -45,10 +73,14 @@ def main() -> None:
     if not pages:
         raise SystemExit(f"Nenhuma imagem encontrada em {input_dir}")
 
+    pass2_options = parse_options(args.pass2_option)
+
     engine = FluxEngine() if args.engine == "flux" else DummyEngine()
     pass2 = Pass2Generator(engine)
 
     print(f"[INFO] Encontradas {len(pages)} páginas em {input_dir}")
+
+    summary: list[dict] = []
 
     for idx, page in enumerate(pages, start=args.start_page):
         mask_path = masks_output / f"page_{idx:03d}_text.png"
@@ -64,15 +96,46 @@ def main() -> None:
             chapter_id=args.chapter_id,
         )
 
-        p2_image = pass2.process_page(str(p1.metadata_path), str(pass2_output))
+        seed_override = None
+        if args.pass2_seed_offset != 0:
+            seed_override = deterministic_seed(args.chapter_id, idx) + args.pass2_seed_offset
+
+        p2_image = pass2.process_page(
+            str(p1.metadata_path),
+            str(pass2_output),
+            strength=args.pass2_strength,
+            seed_override=seed_override,
+            options=pass2_options,
+        )
 
         line = (
             f"[OK] page={idx:03d} mode={p1.mode} meta={p1.metadata_path} "
-            f"runmeta={p1.runmeta_path} p2={p2_image}"
+            f"runmeta={p1.runmeta_path} p2={p2_image} strength={args.pass2_strength}"
         )
+        if seed_override is not None:
+            line += f" seed_override={seed_override}"
         if p1.fallback_reason:
             line += f" reason={p1.fallback_reason}"
         print(line)
+
+        summary.append(
+            {
+                "page_num": idx,
+                "input_page": str(page),
+                "pass1_mode": p1.mode,
+                "pass1_fallback_reason": p1.fallback_reason,
+                "pass1_meta": str(p1.metadata_path),
+                "pass1_runmeta": str(p1.runmeta_path),
+                "pass2_image": p2_image,
+                "pass2_strength": args.pass2_strength,
+                "pass2_seed_override": seed_override,
+                "pass2_options": pass2_options,
+            }
+        )
+
+    summary_path = pass2_output / "batch_summary.json"
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[INFO] Resumo batch salvo em {summary_path}")
 
 
 if __name__ == "__main__":
