@@ -13,7 +13,7 @@ Manga-Flux é um pipeline de colorização com arquitetura **Two-Pass**:
 - **Two-Pass Contract**: `metadata/page_{NNN}.meta.json` validado antes do Pass2.
 - **Runmeta por página**:
   - Pass1: `page_{NNN}.meta.pass1.runmeta.json`
-  - Pass2: `page_{NNN}_colorized.runmeta.json`
+  - Pass2: `page_{NNN}_colorized.runmeta.json` (com `duration_ms`, `timestamp_utc` e `options`)
 - **Validação automática de artefatos**: script para checagem de contrato e linkage Pass1→Pass2.
 
 ## 🛠️ Bootstrap local rápido
@@ -59,3 +59,20 @@ Documentação do contrato em:
 Validador usado pelo Pass2:
 
 - `core/utils/meta_validator.py`
+
+## ▶️ Operação
+
+Guia operacional (com comandos de batch e validação):
+
+- `DOCS/OPERATION.md`
+
+
+## 🔌 API e Extensão
+
+- API local: `api/server.py`
+- Companion extension: `extension/manga-flux-extension`
+- Guia: `DOCS/API_EXTENSION.md`
+- Checklist API + extensão: seção `Checklist (API + extensão)` em `DOCS/API_EXTENSION.md`
+- API com token opcional e extensão com execução single+batch documentadas em `DOCS/API_EXTENSION.md`
+- Pipeline completo via API: `POST /v1/pipeline/run_chapter` (ingestão por URLs)
+- Análise de adaptação FAISS: `DOCS/FAISS_ADAPTACAO_MANGA_FLUX.md`

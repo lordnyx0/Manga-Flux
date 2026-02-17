@@ -1,0 +1,301 @@
+const $ = (id) => document.getElementById(id);
+
+const apiBaseInput = $('apiBase');
+const apiTokenInput = $('apiToken');
+const themeSelect = $('themeSelect');
+const mangaIdInput = $('mangaId');
+const chapterIdInput = $('chapterId');
+const styleReferenceUrlInput = $('styleReferenceUrl');
+const engineInput = $('engine');
+const strengthInput = $('strength');
+const outputRootInput = $('outputRoot');
+const metaPathInput = $('metaPath');
+const outputDirInput = $('outputDir');
+const metadataDirInput = $('metadataDir');
+const batchOutputDirInput = $('batchOutputDir');
+const expectedPagesInput = $('expectedPages');
+
+const saveBtn = $('saveBtn');
+const healthBtn = $('healthBtn');
+const captureImagesBtn = $('captureImagesBtn');
+const clearImagesBtn = $('clearImagesBtn');
+const runChapterBtn = $('runChapterBtn');
+const runBtn = $('runBtn');
+const batchBtn = $('batchBtn');
+const clearHistoryBtn = $('clearHistoryBtn');
+
+const statusEl = $('status');
+const outputEl = $('output');
+const historyList = $('historyList');
+const thumbGrid = $('thumbGrid');
+const imagesCount = $('imagesCount');
+
+const HISTORY_KEY = 'history';
+const IMAGES_KEY = 'chapterPageUrls';
+
+let chapterPageUrls = [];
+
+function applyTheme(themeMode) {
+  let mode = themeMode;
+  if (themeMode === 'auto') {
+    mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', mode);
+}
+
+function setStatus(ok, text) {
+  statusEl.className = ok ? 'row ok' : 'row err';
+  statusEl.textContent = text;
+}
+
+function getHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  const token = apiTokenInput.value.trim();
+  if (token) headers['X-API-Token'] = token;
+  return headers;
+}
+
+function renderThumbnails() {
+  thumbGrid.innerHTML = '';
+  imagesCount.textContent = `${chapterPageUrls.length} imagens selecionadas`;
+
+  chapterPageUrls.forEach((url, idx) => {
+    const item = document.createElement('div');
+    item.className = 'thumb-item';
+
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = `page_${idx + 1}`;
+    img.loading = 'lazy';
+
+    const actions = document.createElement('div');
+    actions.className = 'thumb-actions';
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'danger';
+    removeBtn.textContent = 'Remover';
+    removeBtn.addEventListener('click', async () => {
+      chapterPageUrls = chapterPageUrls.filter((_, i) => i !== idx);
+      await chrome.storage.local.set({ [IMAGES_KEY]: chapterPageUrls });
+      renderThumbnails();
+      await saveSettings();
+    });
+
+    actions.appendChild(removeBtn);
+    item.appendChild(img);
+    item.appendChild(actions);
+    thumbGrid.appendChild(item);
+  });
+}
+
+async function pushHistory(entry) {
+  const data = await chrome.storage.local.get([HISTORY_KEY]);
+  const history = Array.isArray(data[HISTORY_KEY]) ? data[HISTORY_KEY] : [];
+  history.unshift(entry);
+  const trimmed = history.slice(0, 20);
+  await chrome.storage.local.set({ [HISTORY_KEY]: trimmed });
+  renderHistory(trimmed);
+}
+
+function renderHistory(history) {
+  historyList.innerHTML = '';
+  if (!history.length) {
+    historyList.innerHTML = '<li>(vazio)</li>';
+    return;
+  }
+  for (const item of history) {
+    const li = document.createElement('li');
+    li.textContent = `${item.ts} - ${item.action} - ${item.status}`;
+    historyList.appendChild(li);
+  }
+}
+
+async function saveSettings() {
+  await chrome.storage.local.set({
+    apiBase: apiBaseInput.value.trim(),
+    apiToken: apiTokenInput.value.trim(),
+    theme: themeSelect.value,
+    mangaId: mangaIdInput.value.trim(),
+    chapterId: chapterIdInput.value.trim(),
+    styleReferenceUrl: styleReferenceUrlInput.value.trim(),
+    engine: engineInput.value,
+    strength: strengthInput.value,
+    outputRoot: outputRootInput.value.trim(),
+    metaPath: metaPathInput.value.trim(),
+    outputDir: outputDirInput.value.trim(),
+    metadataDir: metadataDirInput.value.trim(),
+    batchOutputDir: batchOutputDirInput.value.trim(),
+    expectedPages: expectedPagesInput.value,
+    [IMAGES_KEY]: chapterPageUrls,
+  });
+}
+
+async function loadSettings() {
+  const keys = [
+    'apiBase', 'apiToken', 'theme', 'mangaId', 'chapterId', 'styleReferenceUrl',
+    'engine', 'strength', 'outputRoot', 'metaPath', 'outputDir', 'metadataDir',
+    'batchOutputDir', 'expectedPages', HISTORY_KEY, IMAGES_KEY,
+  ];
+  const data = await chrome.storage.local.get(keys);
+
+  if (data.apiBase) apiBaseInput.value = data.apiBase;
+  if (data.apiToken) apiTokenInput.value = data.apiToken;
+  themeSelect.value = data.theme || 'auto';
+  applyTheme(themeSelect.value);
+
+  if (data.mangaId) mangaIdInput.value = data.mangaId;
+  if (data.chapterId) chapterIdInput.value = data.chapterId;
+  if (data.styleReferenceUrl) styleReferenceUrlInput.value = data.styleReferenceUrl;
+  if (data.engine) engineInput.value = data.engine;
+  if (data.strength !== undefined) strengthInput.value = data.strength;
+  if (data.outputRoot) outputRootInput.value = data.outputRoot;
+  if (data.metaPath) metaPathInput.value = data.metaPath;
+  if (data.outputDir) outputDirInput.value = data.outputDir;
+  if (data.metadataDir) metadataDirInput.value = data.metadataDir;
+  if (data.batchOutputDir) batchOutputDirInput.value = data.batchOutputDir;
+  if (data.expectedPages !== undefined) expectedPagesInput.value = data.expectedPages;
+
+  chapterPageUrls = Array.isArray(data[IMAGES_KEY]) ? data[IMAGES_KEY] : [];
+  renderThumbnails();
+  renderHistory(data[HISTORY_KEY] || []);
+}
+
+async function requestJSON(url, payload, actionName) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json();
+  const ok = response.ok;
+  setStatus(ok, ok ? `${actionName} concluído.` : `${actionName} falhou (HTTP ${response.status}).`);
+  outputEl.textContent = JSON.stringify(body, null, 2);
+  await pushHistory({ ts: new Date().toISOString(), action: actionName, status: ok ? 'ok' : `http_${response.status}` });
+}
+
+// persist fields quickly so extension keeps state even after popup close/minimize
+[
+  apiBaseInput, apiTokenInput, mangaIdInput, chapterIdInput, styleReferenceUrlInput,
+  engineInput, strengthInput, outputRootInput, metaPathInput, outputDirInput,
+  metadataDirInput, batchOutputDirInput, expectedPagesInput,
+].forEach((el) => el.addEventListener('change', saveSettings));
+
+themeSelect.addEventListener('change', async () => {
+  applyTheme(themeSelect.value);
+  await saveSettings();
+});
+
+saveBtn.addEventListener('click', async () => {
+  await saveSettings();
+  setStatus(true, 'Configuração salva com sucesso.');
+});
+
+healthBtn.addEventListener('click', async () => {
+  const apiBase = apiBaseInput.value.trim();
+  try {
+    const response = await fetch(`${apiBase}/health`);
+    const payload = await response.json();
+    setStatus(response.ok, response.ok ? 'API saudável.' : `Erro HTTP ${response.status}`);
+    outputEl.textContent = JSON.stringify(payload, null, 2);
+    await pushHistory({ ts: new Date().toISOString(), action: 'GET /health', status: response.ok ? 'ok' : `http_${response.status}` });
+  } catch (error) {
+    setStatus(false, 'Falha ao conectar na API.');
+    outputEl.textContent = String(error);
+  }
+});
+
+captureImagesBtn.addEventListener('click', async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) throw new Error('Aba ativa não encontrada');
+
+    const injected = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => Array.from(document.images)
+        .map((img) => img.currentSrc || img.src)
+        .filter((u) => typeof u === 'string' && /^https?:\/\//.test(u)),
+    });
+
+    const urls = injected?.[0]?.result || [];
+    chapterPageUrls = [...new Set(urls)];
+    await saveSettings();
+    renderThumbnails();
+    setStatus(true, `${chapterPageUrls.length} imagem(ns) capturada(s) da aba.`);
+  } catch (error) {
+    setStatus(false, 'Falha ao capturar imagens da aba.');
+    outputEl.textContent = String(error);
+  }
+});
+
+clearImagesBtn.addEventListener('click', async () => {
+  chapterPageUrls = [];
+  await saveSettings();
+  renderThumbnails();
+  setStatus(true, 'Lista de imagens limpa.');
+});
+
+runChapterBtn.addEventListener('click', async () => {
+  await saveSettings();
+  const apiBase = apiBaseInput.value.trim();
+  const payload = {
+    manga_id: mangaIdInput.value.trim(),
+    chapter_id: chapterIdInput.value.trim(),
+    style_reference_url: styleReferenceUrlInput.value.trim(),
+    page_urls: chapterPageUrls,
+    output_root: outputRootInput.value.trim(),
+    engine: engineInput.value,
+    strength: Number(strengthInput.value || '1.0'),
+    options: {},
+  };
+  try {
+    await requestJSON(`${apiBase}/v1/pipeline/run_chapter`, payload, 'POST /v1/pipeline/run_chapter');
+  } catch (error) {
+    setStatus(false, 'Falha ao executar POST /v1/pipeline/run_chapter.');
+    outputEl.textContent = String(error);
+  }
+});
+
+runBtn.addEventListener('click', async () => {
+  await saveSettings();
+  const apiBase = apiBaseInput.value.trim();
+  const payload = {
+    meta_path: metaPathInput.value.trim(),
+    output_dir: outputDirInput.value.trim(),
+    engine: engineInput.value,
+    strength: Number(strengthInput.value || '1.0'),
+    options: {},
+  };
+  try {
+    await requestJSON(`${apiBase}/v1/pass2/run`, payload, 'POST /v1/pass2/run');
+  } catch (error) {
+    setStatus(false, 'Falha ao executar POST /v1/pass2/run.');
+    outputEl.textContent = String(error);
+  }
+});
+
+batchBtn.addEventListener('click', async () => {
+  await saveSettings();
+  const apiBase = apiBaseInput.value.trim();
+  const payload = {
+    metadata_dir: metadataDirInput.value.trim(),
+    output_dir: batchOutputDirInput.value.trim(),
+    engine: engineInput.value,
+    strength: Number(strengthInput.value || '1.0'),
+    expected_pages: Number(expectedPagesInput.value || '0'),
+    options: {},
+  };
+  try {
+    await requestJSON(`${apiBase}/v1/pass2/batch`, payload, 'POST /v1/pass2/batch');
+  } catch (error) {
+    setStatus(false, 'Falha ao executar POST /v1/pass2/batch.');
+    outputEl.textContent = String(error);
+  }
+});
+
+clearHistoryBtn.addEventListener('click', async () => {
+  await chrome.storage.local.set({ [HISTORY_KEY]: [] });
+  renderHistory([]);
+  setStatus(true, 'Histórico limpo.');
+});
+
+loadSettings();
