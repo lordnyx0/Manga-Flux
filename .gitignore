@@ -1,4 +1,4 @@
-# Python
+# --- PYTHON CORE ---
 __pycache__/
 *.py[cod]
 *$py.class
@@ -25,22 +25,44 @@ wheels/
 .cache
 htmlcov/
 
-# Environments
+# --- AMBIENTES VIRTUAIS ---
 .env
 .venv
 venv/
 ENV/
 
-# MangaAutoColor Pro Specific
+# --- IA & MODELOS (CRÍTICO - ADICIONADO) ---
+# Bloqueia pesos de redes neurais e embeddings para não travar o Git
+*.pt
+*.pth
+*.safetensors
+*.bin
+*.onnx
+*.ckpt
+*.tflite
+models/
+
+# --- DADOS ESPECÍFICOS DO PROJETO ---
+# Bloqueia a pasta que causou o problema
+data/embeddings/
+
+# Ignora entradas e saídas pesadas, mantém apenas estrutura se tiver .gitkeep
+data/pages_bw/
+!data/pages_bw/.gitkeep
+output/
+outputs/
+results/
+uploads/
+
+# --- METADADOS DE EXECUÇÃO ---
+# Ignora arquivos de log de execução, mantém configurações (.json puros)
 cache/
 chapter_cache/
-output/
 logs/
-uploads/
-models/
 *.log
+metadata/*.runmeta.json
 
-# Root-level ephemeral test/build logs (don't version these)
+# --- LOGS EFÊMEROS (MANTIDO DO SEU ORIGINAL) ---
 /*_result*.txt
 /*_report*.txt
 /err.txt
@@ -50,6 +72,6 @@ models/
 /fixed_res.txt
 /compose_err.txt
 
-# OS
+# --- SISTEMA OPERACIONAL ---
 .DS_Store
 Thumbs.db
