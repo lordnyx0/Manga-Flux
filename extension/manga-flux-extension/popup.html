@@ -1,188 +1,191 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Manga-Flux Companion</title>
-    <style>
-      :root {
-        --bg: #f3f4f6;
-        --panel: #ffffff;
-        --text: #1f2937;
-        --muted: #6b7280;
-        --border: #d1d5db;
-        --primary: #2563eb;
-        --danger: #dc2626;
-        --success: #15803d;
-      }
-      :root[data-theme="dark"] {
-        --bg: #0f172a;
-        --panel: #111827;
-        --text: #e5e7eb;
-        --muted: #9ca3af;
-        --border: #334155;
-        --primary: #60a5fa;
-        --danger: #f87171;
-        --success: #4ade80;
-      }
-      body {
-        font-family: Inter, Arial, sans-serif;
-        margin: 10px;
-        width: 390px;
-        background: var(--bg);
-        color: var(--text);
-      }
-      .card {
-        background: var(--panel);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 10px;
-        margin-bottom: 8px;
-      }
-      .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-      h3 { margin: 0; font-size: 16px; }
-      .row { margin-bottom: 8px; }
-      label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
-      input, select, button, textarea {
-        width: 100%;
-        padding: 8px;
-        box-sizing: border-box;
-        background: transparent;
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-      }
-      button {
-        cursor: pointer;
-        background: var(--primary);
-        color: white;
-        border: none;
-        font-weight: 600;
-      }
-      button.secondary { background: #475569; }
-      button.danger { background: var(--danger); }
-      .ok { color: var(--success); }
-      .err { color: var(--danger); }
-      pre {
-        white-space: pre-wrap;
-        background: rgba(127,127,127,0.12);
-        padding: 8px;
-        border-radius: 8px;
-        max-height: 160px;
-        overflow: auto;
-      }
-      details { margin-top: 8px; }
-      ul { margin: 6px 0; padding-left: 18px; max-height: 120px; overflow: auto; }
-      .thumb-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 8px;
-      }
-      .thumb-item {
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        overflow: hidden;
-        background: rgba(127,127,127,0.08);
-      }
-      .thumb-item img {
-        width: 100%;
-        height: 76px;
-        object-fit: cover;
-        display: block;
-      }
-      .thumb-actions {
-        padding: 4px;
-      }
-      .thumb-actions button {
-        padding: 4px 6px;
-        font-size: 11px;
-      }
-      .line {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-      }
-      .status-small { font-size: 12px; color: var(--muted); }
-    </style>
-  </head>
-  <body>
-    <div class="card header">
-      <h3>Manga-Flux Companion</h3>
-      <select id="themeSelect" style="width:140px;">
-        <option value="auto">Tema: Auto</option>
-        <option value="light">Tema: Claro</option>
-        <option value="dark">Tema: Escuro</option>
-      </select>
-    </div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manga-Flux</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="app">
 
-    <div class="card">
-      <div class="row"><label for="apiBase">API Base URL</label><input id="apiBase" type="text" value="http://127.0.0.1:8765" /></div>
-      <div class="row"><label for="apiToken">API Token (opcional)</label><input id="apiToken" type="password" value="" /></div>
-      <div class="line">
-        <button id="saveBtn" class="secondary">Salvar URL/Token</button>
-        <button id="healthBtn">Checar /health</button>
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-mark">⬡</span>
+        <span class="logo-text">Manga<strong>Flux</strong></span>
       </div>
-    </div>
+      <div class="header-right">
+        <button id="healthBtn" class="icon-btn" title="Verificar API">
+          <span class="icon">◉</span>
+        </button>
+        <button id="settingsToggle" class="icon-btn" title="Configurações">
+          <span class="icon">⚙</span>
+        </button>
+      </div>
+    </header>
 
-    <div class="card">
-      <details open>
-        <summary>Pipeline capítulo (Pass1 + Pass2)</summary>
-        <div class="line row">
-          <div><label for="mangaId">manga_id</label><input id="mangaId" value="manga_demo" /></div>
-          <div><label for="chapterId">chapter_id</label><input id="chapterId" value="chapter_001" /></div>
+    <!-- Status bar -->
+    <div id="status" class="status-bar"></div>
+
+    <!-- Tab nav -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="chapter">Capítulo</button>
+      <button class="tab-btn" data-tab="pass2">Pass2</button>
+      <button class="tab-btn" data-tab="log">Log</button>
+    </nav>
+
+    <!-- ═══════════════════════════════════════════════
+         TAB: CHAPTER
+    ═══════════════════════════════════════════════ -->
+    <div class="tab-panel active" id="tab-chapter">
+
+      <!-- Manga / Chapter IDs -->
+      <div class="field-row">
+        <div class="field">
+          <label>Manga ID</label>
+          <input id="mangaId" type="text" placeholder="ex: one_piece" />
         </div>
-        <div class="row"><label for="styleReferenceUrl">style_reference_url (opcional)</label><input id="styleReferenceUrl" placeholder="https://.../style.png" /></div>
-        <div class="row"><label for="styleReferenceFile">style_reference_upload</label><input id="styleReferenceFile" type="file" accept="image/*" /></div>
-        <div class="row status-small" id="styleReferenceHint">Use URL ou upload local (upload tem prioridade).</div>
-        <div class="line row">
-          <button id="captureImagesBtn" class="secondary">Capturar imagens da aba</button>
-          <button id="clearImagesBtn" class="danger">Limpar imagens</button>
+        <div class="field">
+          <label>Capítulo</label>
+          <input id="chapterId" type="text" placeholder="ex: ch_001" />
         </div>
-        <div class="row status-small" id="pageImagesHint">Captura apenas imagens relevantes da aba (filtra ícones automaticamente).</div>
-        <div class="row status-small" id="imagesCount">0 imagens selecionadas</div>
-        <div class="thumb-grid row" id="thumbGrid"></div>
-        <div class="line row">
-          <div><label for="engine">engine</label><select id="engine"><option value="dummy">dummy</option><option value="flux">flux</option></select></div>
-          <div><label for="strength">strength</label><input id="strength" type="number" step="0.01" value="1.0" /></div>
+      </div>
+
+      <!-- Engine / Strength -->
+      <div class="field-row">
+        <div class="field">
+          <label>Engine</label>
+          <select id="engine">
+            <option value="flux">Flux</option>
+            <option value="dummy">Dummy</option>
+          </select>
         </div>
-        <div class="row"><label for="outputRoot">output_root</label><input id="outputRoot" value="output" /></div>
-        <button id="runChapterBtn">POST /v1/pipeline/run_chapter</button>
-      </details>
+        <div class="field">
+          <label>Strength <span id="strengthDisplay" class="value-badge">1.0</span></label>
+          <input id="strength" type="range" min="0" max="1" step="0.05" value="1.0" />
+        </div>
+      </div>
+
+      <!-- Style reference -->
+      <div class="field">
+        <label>Referência de Estilo</label>
+        <div class="input-group">
+          <input id="styleReferenceUrl" type="url" placeholder="https://... ou use upload" />
+          <label class="file-btn" title="Upload local">
+            ↑
+            <input id="styleReferenceFile" type="file" accept="image/*" hidden />
+          </label>
+        </div>
+        <span id="styleReferenceHint" class="hint">Upload tem prioridade sobre URL.</span>
+      </div>
+
+      <!-- Image grid -->
+      <div class="images-header">
+        <span id="imagesCount" class="images-count">0 imagens</span>
+        <div class="images-actions">
+          <button id="captureImagesBtn" class="pill-btn primary">⊕ Capturar</button>
+          <button id="clearImagesBtn" class="pill-btn ghost">✕ Limpar</button>
+        </div>
+      </div>
+      <span id="pageImagesHint" class="hint"></span>
+
+      <div id="thumbGrid" class="thumb-grid"></div>
+
+      <!-- Output root -->
+      <div class="field" style="margin-top:12px">
+        <label>Output Root</label>
+        <input id="outputRoot" type="text" placeholder="output" />
+      </div>
+
+      <!-- Run -->
+      <button id="runChapterBtn" class="run-btn">
+        <span class="run-icon">▶</span>
+        Colorizar Capítulo
+      </button>
     </div>
 
-    <div class="card">
-      <details>
-        <summary>Executar Pass2 (single page)</summary>
-        <div class="row"><label for="metaPath">meta_path</label><input id="metaPath" value="metadata/page_001.meta.json" /></div>
-        <div class="row"><label for="outputDir">output_dir</label><input id="outputDir" value="outputs/api/pass2" /></div>
-        <button id="runBtn">POST /v1/pass2/run</button>
-      </details>
+    <!-- ═══════════════════════════════════════════════
+         TAB: PASS2
+    ═══════════════════════════════════════════════ -->
+    <div class="tab-panel" id="tab-pass2">
+
+      <div class="section-title">Pass2 — Single Page</div>
+      <div class="field">
+        <label>Meta Path</label>
+        <input id="metaPath" type="text" placeholder="metadata/page_001.meta.json" />
+      </div>
+      <div class="field">
+        <label>Output Dir</label>
+        <input id="outputDir" type="text" placeholder="outputs/api/pass2" />
+      </div>
+      <button id="runBtn" class="run-btn secondary">▶ Executar Pass2</button>
+
+      <div class="divider"></div>
+
+      <div class="section-title">Pass2 — Batch</div>
+      <div class="field">
+        <label>Metadata Dir</label>
+        <input id="metadataDir" type="text" placeholder="metadata" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Output Dir</label>
+          <input id="batchOutputDir" type="text" placeholder="outputs/api/pass2" />
+        </div>
+        <div class="field" style="max-width:100px">
+          <label>Páginas</label>
+          <input id="expectedPages" type="number" value="0" min="0" />
+        </div>
+      </div>
+      <button id="batchBtn" class="run-btn secondary">▶ Executar Batch</button>
     </div>
 
-    <div class="card">
-      <details>
-        <summary>Executar Pass2 (batch)</summary>
-        <div class="row"><label for="metadataDir">metadata_dir</label><input id="metadataDir" value="metadata" /></div>
-        <div class="row"><label for="batchOutputDir">output_dir</label><input id="batchOutputDir" value="outputs/api/pass2" /></div>
-        <div class="row"><label for="expectedPages">expected_pages (0 para ignorar)</label><input id="expectedPages" type="number" value="3" /></div>
-        <button id="batchBtn">POST /v1/pass2/batch</button>
-      </details>
+    <!-- ═══════════════════════════════════════════════
+         TAB: LOG
+    ═══════════════════════════════════════════════ -->
+    <div class="tab-panel" id="tab-log">
+      <div class="log-toolbar">
+        <span class="section-title">Histórico</span>
+        <button id="clearHistoryBtn" class="pill-btn ghost small">Limpar</button>
+      </div>
+      <ul id="historyList" class="history-list"></ul>
+
+      <div class="section-title" style="margin-top:16px">Resposta da API</div>
+      <pre id="output" class="output-pre">(aguardando…)</pre>
     </div>
 
-    <div class="card">
-      <details>
-        <summary>Histórico local (últimas execuções)</summary>
-        <ul id="historyList"></ul>
-        <button id="clearHistoryBtn" class="danger">Limpar histórico</button>
-      </details>
+    <!-- ═══════════════════════════════════════════════
+         SETTINGS PANEL (overlay)
+    ═══════════════════════════════════════════════ -->
+    <div id="settingsPanel" class="settings-panel hidden">
+      <div class="settings-header">
+        <span>Configurações</span>
+        <button id="settingsClose" class="icon-btn">✕</button>
+      </div>
+
+      <div class="field">
+        <label>API Base URL</label>
+        <input id="apiBase" type="url" value="http://127.0.0.1:8765" />
+      </div>
+      <div class="field">
+        <label>API Token <span class="hint inline">(opcional)</span></label>
+        <input id="apiToken" type="password" placeholder="••••••••" />
+      </div>
+      <div class="field">
+        <label>Tema</label>
+        <select id="themeSelect">
+          <option value="auto">Auto</option>
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+      </div>
+      <button id="saveBtn" class="run-btn" style="margin-top:8px">Salvar</button>
     </div>
 
-    <div id="status" class="row"></div>
-    <pre id="output">Aguardando ação...</pre>
-    <script src="popup.js"></script>
-  </body>
+  </div>
+  <script src="popup.js"></script>
+</body>
 </html>
