@@ -173,83 +173,139 @@ class FluxEngine(ColorizationEngine):
         Monta o nó de Geração (GGUF Loader -> CLIP Text Encode -> Sampler -> VAE Decode) 
         usando a API JSON estática do ComfyUI.
         """
-        # Node keys map exactly to the standard ComfyUI API architecture.
+        steps = options.get("num_inference_steps", 28) if options else 28
+        cfg = options.get("guidance_scale", 4.0) if options else 4.0
+
         workflow = {
             "1": {
-                "inputs": {
-                    "unet_name": "flux-2-klein-9b-Q4_K_M.gguf"
-                },
-                "class_type": "UnetLoaderGGUF"
-            },
-            "11": {
-                "inputs": {
-                    "lora_name": "colorMangaKlein_9B.safetensors",
-                    "strength_model": 1.0,
-                    "model": ["1", 0]
-                },
-                "class_type": "LoraLoaderModelOnly"
+                "class_type": "LoadImage",
+                "inputs": {"image": image_name}
             },
             "2": {
+                "class_type": "ImageScaleToTotalPixels",
+                "inputs": {
+                    "image": ["1", 0],
+                    "upscale_method": "lanczos",
+                    "downscale": 0.5
+                }
+            },
+            "3": {
+                "class_type": "UnetLoaderGGUF",
+                "inputs": {"unet_name": "flux-2-klein-9b-Q4_K_M.gguf"}
+            },
+            "4": {
+                "class_type": "CLIPLoader",
                 "inputs": {
                     "clip_name": "qwen_3_8b_fp4mixed.safetensors",
                     "type": "flux2"
-                },
-                "class_type": "CLIPLoader"
+                }
             },
-            "3": {
-                "inputs": {
-                    "vae_name": "flux2-vae.safetensors"
-                },
-                "class_type": "VAELoader"
-            },
-            "4": {
-                "inputs": {
-                    "text": prompt,
-                    "clip": ["2", 0]
-                },
-                "class_type": "CLIPTextEncode"
+            "5": {
+                "class_type": "VAELoader",
+                "inputs": {"vae_name": "flux2-vae.safetensors"}
             },
             "6": {
+                "class_type": "CLIPTextEncode",
                 "inputs": {
-                    "pixels": ["8", 0],
-                    "vae": ["3", 0]
-                },
-                "class_type": "VAEEncode"
+                    "text": prompt if prompt else "colorMangaKlein. vibrant colors, detailed shading",
+                    "clip": ["4", 0]
+                }
             },
             "7": {
+                "class_type": "CLIPTextEncode",
                 "inputs": {
-                    "seed": seed,
-                    "steps": options.get("num_inference_steps", 25) if options else 25,
-                    "cfg": 1.0, # Flux base cfg 
-                    "sampler_name": "euler",
-                    "scheduler": "simple",
-                    "denoise": 0.55, # Lower strength to prevent hallucinations overriding lines
-                    "model": ["11", 0],
-                    "positive": ["4", 0],
-                    "negative": ["4", 0], # Flux doesn't use negative natively in some setups
-                    "latent_image": ["6", 0]
-                },
-                "class_type": "KSampler"
+                    "text": "grayscale, monochrome",
+                    "clip": ["4", 0]
+                }
             },
             "8": {
+                "class_type": "VAEEncode",
                 "inputs": {
-                    "image": image_name
-                },
-                "class_type": "LoadImage"
+                    "pixels": ["2", 0],
+                    "vae": ["5", 0]
+                }
             },
             "9": {
+                "class_type": "ReferenceLatent",
                 "inputs": {
-                    "samples": ["7", 0],
-                    "vae": ["3", 0]
-                },
-                "class_type": "VAEDecode"
+                    "conditioning": ["6", 0],
+                    "latent": ["8", 0]
+                }
             },
             "10": {
+                "class_type": "ReferenceLatent",
                 "inputs": {
-                    "filename_prefix": "manga_flux",
-                    "images": ["9", 0]
-                },
-                "class_type": "SaveImage"
+                    "conditioning": ["7", 0],
+                    "latent": ["8", 0]
+                }
+            },
+            "11": {
+                "class_type": "LoraLoaderModelOnly",
+                "inputs": {
+                    "model": ["3", 0],
+                    "lora_name": "colorMangaKlein_9B.safetensors",
+                    "strength_model": 1.0
+                }
+            },
+            "12": {
+                "class_type": "EmptyFlux2LatentImage",
+                "inputs": {
+                    "width": 1024,
+                    "height": 1024,
+                    "batch_size": 1
+                }
+            },
+            "13": {
+                "class_type": "SamplerCustomAdvanced",
+                "inputs": {
+                    "noise": ["14", 0],
+                    "guider": ["15", 0],
+                    "sampler": ["16", 0],
+                    "sigmas": ["17", 0],
+                    "latent_image": ["12", 0]
+                }
+            },
+            "14": {
+                "class_type": "RandomNoise",
+                "inputs": {
+                    "seed": seed,
+                    "noise_type": "fixed"
+                }
+            },
+            "15": {
+                "class_type": "CFGGuider",
+                "inputs": {
+                    "model": ["11", 0],
+                    "positive": ["9", 0],
+                    "negative": ["10", 0],
+                    "cfg": cfg
+                }
+            },
+            "16": {
+                "class_type": "KSamplerSelect",
+                "inputs": {"sampler_name": "euler"}
+            },
+            "17": {
+                "class_type": "Flux2Scheduler",
+                "inputs": {
+                    "steps": steps,
+                    "width": 1024,
+                    "height": 1024
+                }
+            },
+            "18": {
+                "class_type": "VAEDecode",
+                "inputs": {
+                    "samples": ["13", 0],
+                    "vae": ["5", 0]
+                }
+            },
+            "19": {
+                "class_type": "SaveImage",
+                "inputs": {
+                    "images": ["18", 0],
+                    "filename_prefix": "manga_ref_latent"
+                }
             }
         }
         return workflow
