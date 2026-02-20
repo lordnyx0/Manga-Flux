@@ -25,13 +25,17 @@ Manga-Flux é um pipeline avançado de colorização headless via API projetado 
 - `onnxruntime-gpu` (ou `onnxruntime` para CPU) - Para inferência do YOLO no Pass1.
 - `fastapi`, `uvicorn`, `requests`, `numpy`, `Pillow`
 
+```bash
+pip install fastapi uvicorn requests numpy Pillow onnxruntime-gpu
+```
+
 ### ComfyUI Engine Backend
 O Manga-Flux funciona interceptando uma instância local do **ComfyUI** via API. Você precisará:
 1. ComfyUI instalado localmente (https://github.com/comfyanonymous/ComfyUI)
 2. Custom Node GGUF (`ComfyUI-GGUF`): `git clone https://github.com/city96/ComfyUI-GGUF`
 3. Custom Node ReferenceLatent (`ComfyUI_experiments`): `git clone https://github.com/comfyanonymous/ComfyUI_experiments`
 
-## 🧠 Modelos Utilizados (Baixe e insira nas respectivas pastas)
+## 🧠 Modelos Utilizados
 
 ### YOLO / Pass1 (Manga Analysis)
 *   **Manga109 YOLO ONNX**: `data/models/manga109_yolo.onnx`

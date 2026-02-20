@@ -13,7 +13,8 @@
                 0
             ],
             "upscale_method": "lanczos",
-            "downscale": 0.5
+            "megapixels": 1.0,
+            "resolution_steps": 64
         }
     },
     "3": {
@@ -141,8 +142,7 @@
     "14": {
         "class_type": "RandomNoise",
         "inputs": {
-            "seed": "%SEED%",
-            "noise_type": "fixed"
+            "noise_seed": "%SEED%"
         }
     },
     "15": {
