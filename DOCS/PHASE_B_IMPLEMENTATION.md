@@ -83,32 +83,18 @@ Antes de projetar o pipeline completo, é crucial confirmar o comportamento do m
 > A nossa `FluxEngine` foi totalmente refatorada para gerar a Payload de API com a arquitetura `ReferenceLatent`. O *KSampler* recebe um `EmptyFlux2LatentImage` e o Denoise é mantido alto. A imagem "fantasma" é guiada puramente de forma semântica pelo Conditioning e pelo peso do LoRA, curando o problema de destruição do mangá original sem alucinar.
 ### 2.4. Integração com Bateria de Testes / Batch
 - [x] Atualizar script `run_pass2_local.py` permitindo chave `--engine flux` acessar adequadamente o pipeline real.
-- [ ] Ajustar e rodar o pipeline através de `run_two_pass_batch_local.py` gerando resultados reais (batch de 3 a 5 páginas).
-- [ ] Observar consistência visual nas imagens renderizadas usando sementes estáticas (`--pass2-seed-offset`).
-- [ ] Revisar tempo de inferência (`duration_ms`) e garantir observabilidade.
+- [x] Ajustar e rodar o pipeline através de `run_two_pass_batch_local.py` gerando resultados reais (batch de 3 a 5 páginas).
+- [x] Observar consistência visual nas imagens renderizadas usando sementes estáticas (`--pass2-seed-offset`).
+- [x] Revisar tempo de inferência (`duration_ms`) e garantir observabilidade.
 
 ### 2.5. Padronização Formal do Runmeta JSON
 O artefato `runmeta.json` deve possuir uma estrutura de metadados exata para não perder a rastreabilidade:
-- [ ] Implementar validador ou builder formal, garantindo chaves como:
-```json
-{
-  "engine": "flux",
-  "model_name": "...",
-  "model_hash": "...",
-  "seed": 12345,
-  "guidance_scale": 7.5,
-  "num_steps": 30,
-  "width": 1280,
-  "height": 1808,
-  "duration_ms": 4235,
-  "vram_peak_mb": 7420
-}
-```
+- [x] Implementar validador ou builder formal, garantindo as chaves (Aplicado via `pipeline.py`).
 
 ### 2.6. Refinamento e Funcionalidades Avançadas
-- [ ] Gerenciamento/Logging de erros se a API do Pass2 falhar por falta de modelo ou OOM (`Out of Memory`).
-- [ ] Implementar Integração FAISS **apenas na fase de extração (pós Pass1)** alimentando o JSON. A busca semântica não fará parte do ciclo de vida da CPU/GPU durante a engine de difusão.
-- [ ] Retornar metadados ricos para a Extensão Chrome sobre os parâmetros que a difusão real interpretou.
+- [x] Gerenciamento/Logging de erros se a API do Pass2 falhar por falta de modelo ou OOM (Blocks de Try/Catch na engine).
+- [~] Implementar Integração FAISS apenas na fase de extração (pós Pass1). -> *Pausado para futura validação de Arquitetura.*
+- [~] Retornar metadados ricos para a Extensão Chrome sobre os parâmetros que a difusão real interpretou. -> *Delegado para Fase de Conexão API/Chrome.*
 
 ---
 

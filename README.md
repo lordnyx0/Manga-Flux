@@ -63,3 +63,21 @@ python run_two_pass_batch_local.py \
   --chapter-id chapter_test \
   --engine flux
 ```
+
+## 📄 Contratos e Arquitetura
+
+- `metadata/README.md` (Contrato Pass1 -> Pass2)
+- `DOCS/PHASE_B_IMPLEMENTATION.md` (Arquitetura Geração FLUX Flow-Matching)
+- `DOCS/PHASE_C_CORRECTION.md` (Composição Passiva e Inpaint Ativo)
+- `core/utils/meta_validator.py` (Validador P2)
+
+## ▶️ Operação 
+
+- `DOCS/OPERATION.md` (Guia operacional com comandos batch)
+
+## 🔌 API e Extensão Chrome
+
+- API local: `api/server.py`
+- Companion extension: `extension/manga-flux-extension`
+- Guia Completo: `DOCS/API_EXTENSION.md`
+- Análise de Adaptação FAISS: `DOCS/FAISS_ADAPTACAO_MANGA_FLUX.md`
