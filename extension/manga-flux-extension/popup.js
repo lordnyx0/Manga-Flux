@@ -1,52 +1,52 @@
 const $ = (id) => document.getElementById(id);
 
 // DOM refs
-const apiBaseInput           = $('apiBase');
-const apiTokenInput          = $('apiToken');
-const themeSelect            = $('themeSelect');
-const mangaIdInput           = $('mangaId');
-const chapterIdInput         = $('chapterId');
+const apiBaseInput = $('apiBase');
+const apiTokenInput = $('apiToken');
+const themeSelect = $('themeSelect');
+const mangaIdInput = $('mangaId');
+const chapterIdInput = $('chapterId');
 const styleReferenceUrlInput = $('styleReferenceUrl');
-const styleReferenceFileInput= $('styleReferenceFile');
-const styleReferenceHintEl   = $('styleReferenceHint');
-const pageImagesHintEl       = $('pageImagesHint');
-const engineInput            = $('engine');
-const strengthInput          = $('strength');
-const strengthDisplay        = $('strengthDisplay');
-const outputRootInput        = $('outputRoot');
-const metaPathInput          = $('metaPath');
-const outputDirInput         = $('outputDir');
-const metadataDirInput       = $('metadataDir');
-const batchOutputDirInput    = $('batchOutputDir');
-const expectedPagesInput     = $('expectedPages');
+const styleReferenceFileInput = $('styleReferenceFile');
+const styleReferenceHintEl = $('styleReferenceHint');
+const pageImagesHintEl = $('pageImagesHint');
+const engineInput = $('engine');
+const strengthInput = $('strength');
+const strengthDisplay = $('strengthDisplay');
+const outputRootInput = $('outputRoot');
+const metaPathInput = $('metaPath');
+const outputDirInput = $('outputDir');
+const metadataDirInput = $('metadataDir');
+const batchOutputDirInput = $('batchOutputDir');
+const expectedPagesInput = $('expectedPages');
 
-const saveBtn          = $('saveBtn');
-const healthBtn        = $('healthBtn');
+const saveBtn = $('saveBtn');
+const healthBtn = $('healthBtn');
 const captureImagesBtn = $('captureImagesBtn');
-const clearImagesBtn   = $('clearImagesBtn');
-const runChapterBtn    = $('runChapterBtn');
-const runBtn           = $('runBtn');
-const batchBtn         = $('batchBtn');
-const clearHistoryBtn  = $('clearHistoryBtn');
-const settingsToggle   = $('settingsToggle');
-const settingsClose    = $('settingsClose');
-const settingsPanel    = $('settingsPanel');
+const clearImagesBtn = $('clearImagesBtn');
+const runChapterBtn = $('runChapterBtn');
+const runBtn = $('runBtn');
+const batchBtn = $('batchBtn');
+const clearHistoryBtn = $('clearHistoryBtn');
+const settingsToggle = $('settingsToggle');
+const settingsClose = $('settingsClose');
+const settingsPanel = $('settingsPanel');
 
-const statusEl    = $('status');
-const outputEl    = $('output');
+const statusEl = $('status');
+const outputEl = $('output');
 const historyList = $('historyList');
-const thumbGrid   = $('thumbGrid');
+const thumbGrid = $('thumbGrid');
 const imagesCount = $('imagesCount');
 
-const HISTORY_KEY        = 'history';
-const IMAGES_KEY         = 'chapterPageItems';
-const MIN_CAPTURE_WIDTH  = 320;
+const HISTORY_KEY = 'history';
+const IMAGES_KEY = 'chapterPageItems';
+const MIN_CAPTURE_WIDTH = 320;
 const MIN_CAPTURE_HEIGHT = 320;
-const THUMB_SIZE         = 120; // px for preview thumbnails
+const THUMB_SIZE = 120; // px for preview thumbnails
 
-let chapterPageItems    = [];
-let styleReferenceUpload= null;
-let captureSourceUrl    = '';
+let chapterPageItems = [];
+let styleReferenceUpload = null;
+let captureSourceUrl = '';
 let captureCookieHeader = '';
 
 // ---------------------------------------------------------------------------
@@ -93,7 +93,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
 // ---------------------------------------------------------------------------
 
 settingsToggle.addEventListener('click', () => settingsPanel.classList.remove('hidden'));
-settingsClose.addEventListener('click',  () => settingsPanel.classList.add('hidden'));
+settingsClose.addEventListener('click', () => settingsPanel.classList.add('hidden'));
 
 // ---------------------------------------------------------------------------
 // Strength slider label
@@ -121,7 +121,7 @@ async function requestJSON(url, payload, actionName) {
     body: JSON.stringify(payload),
   });
   const body = await response.json();
-  const ok   = response.ok;
+  const ok = response.ok;
   setStatus(ok, ok ? `${actionName} concluído.` : `${actionName} falhou (HTTP ${response.status}).`);
   outputEl.textContent = JSON.stringify(body, null, 2);
   // Switch to log tab on completion
@@ -164,8 +164,8 @@ async function fetchThumbInTab(tabId, url) {
 
         // Decode into an ImageBitmap and draw at thumbnail size
         const bitmap = await createImageBitmap(blob);
-        const ratio  = Math.min(maxSize / bitmap.width, maxSize / bitmap.height, 1);
-        const w = Math.round(bitmap.width  * ratio);
+        const ratio = Math.min(maxSize / bitmap.width, maxSize / bitmap.height, 1);
+        const w = Math.round(bitmap.width * ratio);
         const h = Math.round(bitmap.height * ratio);
         const canvas = new OffscreenCanvas(w, h);
         canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
@@ -204,14 +204,14 @@ async function fetchImageInTab(tabId, url, referer) {
         const resp = await fetch(imgUrl, { credentials: 'include', headers });
         if (!resp.ok) return { error: `HTTP ${resp.status}` };
 
-        const ct  = resp.headers.get('content-type') || '';
+        const ct = resp.headers.get('content-type') || '';
         const ext = ct.includes('jpeg') || ct.includes('jpg') ? 'jpg'
-          : ct.includes('png')  ? 'png'
-          : ct.includes('webp') ? 'webp'
-          : (imgUrl.split('?')[0].split('.').pop().toLowerCase().replace(/[^a-z]/g, '') || 'jpg');
+          : ct.includes('png') ? 'png'
+            : ct.includes('webp') ? 'webp'
+              : (imgUrl.split('?')[0].split('.').pop().toLowerCase().replace(/[^a-z]/g, '') || 'jpg');
 
         const buffer = await resp.arrayBuffer();
-        const bytes  = new Uint8Array(buffer);
+        const bytes = new Uint8Array(buffer);
         let binary = '';
         const CHUNK = 8192;
         for (let i = 0; i < bytes.length; i += CHUNK) {
@@ -225,8 +225,8 @@ async function fetchImageInTab(tabId, url, referer) {
   });
 
   const result = results?.[0]?.result;
-  if (!result)        throw new Error(`executeScript sem resultado para: ${url}`);
-  if (result.error)   throw new Error(`${result.error} — ${url}`);
+  if (!result) throw new Error(`executeScript sem resultado para: ${url}`);
+  if (result.error) throw new Error(`${result.error} — ${url}`);
   if (!result.base64) throw new Error(`base64 vazio para: ${url}`);
   return { content_base64: result.base64, filename_ext: result.ext || 'jpg' };
 }
@@ -238,7 +238,7 @@ async function buildPageUploads(tabId, items, referer, onProgress) {
   const uploads = [];
   for (let i = 0; i < items.length; i++) {
     onProgress(i, items.length);
-    const item   = items[i];
+    const item = items[i];
     const padded = String(i + 1).padStart(3, '0');
 
     if (item.source === 'upload' && item.content_base64) {
@@ -350,7 +350,7 @@ function normalizeStoredItems(rawItems) {
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload  = () => { const o = String(reader.result || ''); resolve(o.includes(',') ? o.split(',', 2)[1] : o); };
+    reader.onload = () => { const o = String(reader.result || ''); resolve(o.includes(',') ? o.split(',', 2)[1] : o); };
     reader.onerror = () => reject(reader.error || new Error('Falha ao ler arquivo'));
     reader.readAsDataURL(file);
   });
@@ -394,34 +394,40 @@ async function saveSettings() {
     batchOutputDir: batchOutputDirInput.value.trim(),
     expectedPages: expectedPagesInput.value,
     captureSourceUrl,
+    styleReferenceUpload,
     [IMAGES_KEY]: chapterPageItems,
   });
 }
 
 async function loadSettings() {
   const keys = [
-    'apiBase','apiToken','theme','mangaId','chapterId','styleReferenceUrl',
-    'engine','strength','outputRoot','metaPath','outputDir','metadataDir',
-    'batchOutputDir','expectedPages',HISTORY_KEY,IMAGES_KEY,'chapterPageUrls','captureSourceUrl',
+    'apiBase', 'apiToken', 'theme', 'mangaId', 'chapterId', 'styleReferenceUrl',
+    'engine', 'strength', 'outputRoot', 'metaPath', 'outputDir', 'metadataDir',
+    'batchOutputDir', 'expectedPages', HISTORY_KEY, IMAGES_KEY, 'chapterPageUrls', 'captureSourceUrl',
+    'styleReferenceUpload',
   ];
   const data = await chrome.storage.local.get(keys);
 
-  if (data.apiBase)           apiBaseInput.value           = data.apiBase;
-  if (data.apiToken)          apiTokenInput.value          = data.apiToken;
+  if (data.apiBase) apiBaseInput.value = data.apiBase;
+  if (data.apiToken) apiTokenInput.value = data.apiToken;
   themeSelect.value = data.theme || 'auto';
   applyTheme(themeSelect.value);
-  if (data.mangaId)           mangaIdInput.value           = data.mangaId;
-  if (data.chapterId)         chapterIdInput.value         = data.chapterId;
+  if (data.mangaId) mangaIdInput.value = data.mangaId;
+  if (data.chapterId) chapterIdInput.value = data.chapterId;
   if (data.styleReferenceUrl) styleReferenceUrlInput.value = data.styleReferenceUrl;
-  if (data.engine)            engineInput.value            = data.engine;
+  if (data.engine) engineInput.value = data.engine;
   if (data.strength !== undefined) { strengthInput.value = data.strength; strengthDisplay.textContent = Number(data.strength).toFixed(2); }
-  if (data.outputRoot)        outputRootInput.value        = data.outputRoot;
-  if (data.metaPath)          metaPathInput.value          = data.metaPath;
-  if (data.outputDir)         outputDirInput.value         = data.outputDir;
-  if (data.metadataDir)       metadataDirInput.value       = data.metadataDir;
-  if (data.batchOutputDir)    batchOutputDirInput.value    = data.batchOutputDir;
+  if (data.outputRoot) outputRootInput.value = data.outputRoot;
+  if (data.metaPath) metaPathInput.value = data.metaPath;
+  if (data.outputDir) outputDirInput.value = data.outputDir;
+  if (data.metadataDir) metadataDirInput.value = data.metadataDir;
+  if (data.batchOutputDir) batchOutputDirInput.value = data.batchOutputDir;
   if (data.expectedPages !== undefined) expectedPagesInput.value = data.expectedPages;
-  if (data.captureSourceUrl)  captureSourceUrl             = data.captureSourceUrl;
+  if (data.captureSourceUrl) captureSourceUrl = data.captureSourceUrl;
+  if (data.styleReferenceUpload) {
+    styleReferenceUpload = data.styleReferenceUpload;
+    styleReferenceHintEl.textContent = `✓ ${styleReferenceUpload.filename}`;
+  }
 
   const oldUrls = Array.isArray(data.chapterPageUrls)
     ? data.chapterPageUrls.map((url) => ({ source: 'url', url, previewUrl: url }))
@@ -476,7 +482,7 @@ healthBtn.addEventListener('click', async () => {
   try {
     setStatusLoading('Verificando API…');
     const response = await fetch(`${apiBase}/health`);
-    const payload  = await response.json();
+    const payload = await response.json();
     setStatus(response.ok, response.ok ? `API v${payload.version || '?'} — online` : `Erro HTTP ${response.status}`);
     outputEl.textContent = JSON.stringify(payload, null, 2);
     await pushHistory({ ts: new Date().toISOString(), action: 'GET /health', status: response.ok ? 'ok' : `http_${response.status}` });
@@ -495,7 +501,7 @@ captureImagesBtn.addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('Aba ativa não encontrada');
 
-    captureSourceUrl    = typeof tab.url === 'string' ? tab.url : '';
+    captureSourceUrl = typeof tab.url === 'string' ? tab.url : '';
     captureCookieHeader = await buildCookieHeaderForUrl(captureSourceUrl);
 
     setStatusLoading('Capturando imagens da aba…');
@@ -592,28 +598,52 @@ runChapterBtn.addEventListener('click', async () => {
 
     setStatusLoading(`Enviando ${page_uploads.length} imagens para o servidor…`);
 
+    // Generate a simple unique ID for this job
+    const clientId = crypto.randomUUID();
+
     const payload = {
-      manga_id:    mangaIdInput.value.trim(),
-      chapter_id:  chapterIdInput.value.trim(),
-      engine:      engineInput.value,
-      strength:    Number(strengthInput.value || '1.0'),
+      client_id: clientId,
+      manga_id: mangaIdInput.value.trim(),
+      chapter_id: chapterIdInput.value.trim(),
+      engine: engineInput.value,
+      strength: Number(strengthInput.value || '1.0'),
       output_root: outputRootInput.value.trim(),
-      options:     {},
+      options: {},
       page_uploads,
     };
 
     if (styleReferenceUpload?.contentBase64) {
-      payload.style_reference_base64   = styleReferenceUpload.contentBase64;
+      payload.style_reference_base64 = styleReferenceUpload.contentBase64;
       payload.style_reference_filename = styleReferenceUpload.filename || 'style_reference.png';
     } else if (styleReferenceUrlInput.value.trim()) {
       payload.style_reference_url = styleReferenceUrlInput.value.trim();
     }
 
-    await requestJSON(
-      `${apiBaseInput.value.trim()}/v1/pipeline/run_chapter`,
-      payload,
-      'POST /v1/pipeline/run_chapter',
-    );
+    // Start polling the server for progress status
+    const baseUrl = apiBaseInput.value.trim();
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`${baseUrl}/v1/pipeline/status?client_id=${clientId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.message) {
+            setStatusLoading(data.message);
+          }
+        }
+      } catch (e) {
+        // Silently ignore ping network errors
+      }
+    }, 2000);
+
+    try {
+      await requestJSON(
+        `${baseUrl}/v1/pipeline/run_chapter`,
+        payload,
+        'POST /v1/pipeline/run_chapter',
+      );
+    } finally {
+      clearInterval(pollInterval);
+    }
 
   } catch (error) {
     setStatus(false, `Falha: ${error.message}`);

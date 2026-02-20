@@ -22,6 +22,14 @@ except Exception:  # pragma: no cover - portability fallback
     torch = _TorchShim()  # type: ignore
 
 # ============================================================================
+# DIRETÓRIOS BASE
+# ============================================================================
+ROOT_DIR = Path(__file__).parent.parent.absolute()
+MODELS_DIR = ROOT_DIR / "models"
+FLUX_MODEL_PATH = MODELS_DIR / "base" / "flux-2-klein-9b-Q4_K_M.gguf"
+
+
+# ============================================================================
 # HARDWARE E PERFORMANCE
 # ============================================================================
 DEVICE = "cpu"  # Force CPU to avoid CUDA compatibility issues

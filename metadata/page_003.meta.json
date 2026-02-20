@@ -1,8 +1,0 @@
-{
-  "page_num": 3,
-  "page_image": "data\\pages_bw\\page_003.png",
-  "page_seed": 437164680,
-  "page_prompt": "manga page colorization page=3",
-  "style_reference": "data/dummy_manga_test.png",
-  "text_mask": "outputs\\pass1\\masks\\page_003_text.png"
-}

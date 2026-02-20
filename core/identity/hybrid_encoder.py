@@ -35,7 +35,7 @@ except ImportError:
     INSIGHTFACE_AVAILABLE = False
 
 try:
-    from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
+    from transformers import CLIPImageProcessor, CLIPModel
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
@@ -160,7 +160,7 @@ class HybridIdentitySystem:
                 model_name = "openai/clip-vit-large-patch14"
                 
                 self._clip_processor = CLIPImageProcessor.from_pretrained(model_name)
-                self._clip_model = CLIPVisionModelWithProjection.from_pretrained(
+                self._clip_model = CLIPModel.from_pretrained(
                     model_name,
                     torch_dtype=self.dtype
                 ).to(self.device)
@@ -268,7 +268,7 @@ class HybridIdentitySystem:
                         
                         face_embedding = main_face.embedding
                         face_bbox = tuple(map(int, main_face.bbox))
-                        confidence = main_face.det_score
+                        confidence = float(main_face.det_score)
                 except Exception as e:
                     print(f"[HybridIdentitySystem] Erro na detecção facial: {e}")
         
@@ -308,8 +308,7 @@ class HybridIdentitySystem:
         
         # Extrai features
         with torch.no_grad():
-            outputs = model(**inputs)
-            embedding = outputs.image_embeds
+            embedding = model.get_image_features(**inputs)
             
             # Normaliza
             embedding = F.normalize(embedding, dim=-1)

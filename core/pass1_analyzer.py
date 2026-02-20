@@ -242,7 +242,7 @@ class Pass1Analyzer:
         
         # 5. Extrai lineart e máscara de texto
         lineart = self._extract_lineart(image_np)
-        text_mask = self._detect_text_regions(image_np)
+        text_mask = self._detect_text_regions(image_np, detections)
         
         # ADR 004: Extrai depth_order
         depth_order = [det.char_id for det in detections if det.char_id]
@@ -594,35 +594,21 @@ class Pass1Analyzer:
             
         return scene_detector.detect(image)
 
-    def _detect_text_regions(self, image: np.ndarray) -> np.ndarray:
+    def _detect_text_regions(self, image: np.ndarray, detections: List[Detection]) -> np.ndarray:
         """
         Detecta regiões de texto (balões, SFX).
-        
-        Args:
-            image: Imagem da página
-            
-        Returns:
-            Máscara de texto (0 = não texto, 255 = texto)
+        Usa os bounding boxes gerados pelo YOLO para a classe TEXT.
         """
-        # Implementação simplificada
-        # Em produção, usar modelo específico (PaddleOCR, etc)
+        h, w = image.shape[:2]
+        text_mask = np.zeros((h, w), dtype=np.uint8)
         
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        from core.constants import DetectionClass
         
-        # Threshold para detectar regiões brancas (fundo de balões)
-        _, white_mask = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY)
-        
-        # Detecta componentes conectados
-        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
-            white_mask, 
-            connectivity=8
-        )
-        
-        # Filtra por tamanho (balões típicos)
-        text_mask = np.zeros_like(gray)
-        for i in range(1, num_labels):
-            area = stats[i, cv2.CC_STAT_AREA]
-            if 100 < area < 50000:  # Filtro de área
-                text_mask[labels == i] = 255
+        for det in detections:
+            if det.class_id == DetectionClass.TEXT.value:
+                x1, y1, x2, y2 = det.bbox
+                x1, y1 = max(0, int(x1)), max(0, int(y1))
+                x2, y2 = min(w, int(x2)), min(h, int(y2))
+                text_mask[y1:y2, x1:x2] = 255
         
         return text_mask

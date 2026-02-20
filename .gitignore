@@ -75,3 +75,21 @@ metadata/*.runmeta.json
 # --- SISTEMA OPERACIONAL ---
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# --- AMBIENTES EXTERNOS (COMFYUI) ---
+# Bloqueia a instalação local do ComfyUI e seus modelos para não travar o Git
+ComfyUI_windows_portable/
+ComfyUI/
+temp_parse.py
+*.gguf
+
+# --- PASTAS DE TESTES DE CAPÍTULOS E PIPELINE ---
+Doukutsu_Ou_kara_Hajimeru_Rakuen_Life/
+manga_default/
+metadata/page_*.meta.json
+metadata/test_pass1_meta.json
+metadata/pipeline_state.db*
+error_log.txt
+error_run.txt
+outputs/pass1/masks/*.png

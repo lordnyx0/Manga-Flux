@@ -16,10 +16,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 import sys
+from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+
+# Global state for simple progress polling from the extension
+GLOBAL_PIPELINE_STATUS: dict[str, str] = {}
 
 from core.analysis.pass1_pipeline import run_pass1_with_report
 from core.generation.engines.dummy_engine import DummyEngine
@@ -542,7 +546,9 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
         _json_response(self, HTTPStatus.NO_CONTENT, {"status": "ok"})
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path == "/health":
+        parsed_url = urllib.parse.urlparse(self.path)
+        
+        if parsed_url.path == "/health":
             _json_response(
                 self,
                 HTTPStatus.OK,
@@ -555,6 +561,14 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
                 },
             )
             return
+            
+        if parsed_url.path == "/v1/pipeline/status":
+            query = urllib.parse.parse_qs(parsed_url.query)
+            client_id = query.get("client_id", [""])[0]
+            msg = GLOBAL_PIPELINE_STATUS.get(client_id, "Processando / Aguardando...")
+            _json_response(self, HTTPStatus.OK, {"status": "ok", "message": msg})
+            return
+            
         self._send_error(HTTPStatus.NOT_FOUND, "Route not found")
 
     def do_POST(self) -> None:  # noqa: N802
@@ -732,10 +746,17 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             return self._send_error(HTTPStatus.BAD_REQUEST, "Invalid request body", str(exc))
 
+        client_id = payload.get("client_id")
+        
+        def update_status(msg: str) -> None:
+            if client_id:
+                GLOBAL_PIPELINE_STATUS[client_id] = msg
+
         manga_id = _slugify(str(payload.get("manga_id", "manga_default")), "manga_default")
         chapter_id = _slugify(str(payload.get("chapter_id", "chapter_001")), "chapter_001")
         debug_dump_json = bool(payload.get("debug_dump_json", False))
 
+        update_status("Inicializando diretórios e preparando referências de estilo...")
         root_dir = (
             Path(str(payload.get("output_root", "output")))
             / manga_id / "chapters" / chapter_id
@@ -750,6 +771,7 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
             state_db_path = root_dir / "pipeline_state.db"
             style_path, style_source = _resolve_style_reference(payload, root_dir)
 
+            update_status("Baixando imagens da Extensão...")
             engine = _make_engine(engine_name)
             options = dict(options)
             options["chapter_id"] = chapter_id
@@ -757,6 +779,8 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
 
             chapter_pages = _resolve_chapter_pages(payload, inputs_dir)
             page_results = []
+            
+            total_pages = len(chapter_pages)
 
             for i, chapter_page in enumerate(chapter_pages, start=1):
                 page_path = Path(chapter_page["input_path"])
@@ -766,6 +790,7 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
                     f"page={i} manga={manga_id} chapter={chapter_id}"
                 )
 
+                update_status(f"[{i}/{total_pages}] Executando Análise de IA (Passo 1)...")
                 p1 = run_pass1_with_report(
                     page_image=str(page_path),
                     style_reference=str(style_path),
@@ -778,6 +803,7 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
                     debug_dump_json=debug_dump_json,
                 )
 
+                update_status(f"[{i}/{total_pages}] Gerando Colorização no ComfyUI (Passo 2)...")
                 image_path = pass2.process_page_from_state(
                     chapter_id=chapter_id,
                     page_num=i,
@@ -799,6 +825,11 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
                         "pass2_image": image_path,
                     }
                 )
+
+            update_status("Concluído!")
+            time.sleep(1) # Give extension 1s to poll final status
+            if client_id and client_id in GLOBAL_PIPELINE_STATUS:
+                del GLOBAL_PIPELINE_STATUS[client_id]
 
             return _json_response(
                 self,

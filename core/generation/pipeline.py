@@ -114,20 +114,60 @@ class Pass2Generator:
         chapter_id = str((options or {}).get("chapter_id", "default"))
 
         try:
-            result = self.engine.generate(
-                image=_path_from_meta(meta["page_image"]),
-                style_reference=_path_from_meta(meta["style_reference"]),
-                mask=_path_from_meta(meta["text_mask"]),
-                prompt=str(meta["page_prompt"]),
+            from core.generation.orchestrator import Pass2Orchestrator
+            
+            # Initiate Orchestrator (it handles the meta.json mapping, Text Masks and Style Bindings internally)
+            orchestrator = Pass2Orchestrator(
+                meta_json_path=meta_source.replace("sqlite://", "") if not meta_source.startswith("sqlite") else str(out_dir / "meta.json"), # Stub path handling for DB vs File
+                masks_dir=str(out_dir), # Assumes masks are in output dir or passed explicitly later
+                style_ref_path=str(_path_from_meta(meta["style_reference"]))
+            )
+            
+            # To avoid breaking existing sqlite logic, we inject the raw loaded dictionary directly 
+            # into the orchestrator if it's running from DB payload
+            orchestrator.metadata = meta 
+            
+            # Get purely generic payload
+            payload = orchestrator.prepare_generation_payload()
+            
+            result, run_stats = self.engine.generate(
+                payload=payload,
                 seed=seed,
                 strength=float(strength),
                 options=options,
             )
+            
+            runmeta.update(run_stats)
 
+            from PIL import Image
+            
+            # Convert result to PIL Image if it's a path
             if isinstance(result, (str, Path)):
-                shutil.copy2(result, out_image_path)
+                result_img = Image.open(result).convert("RGB")
             else:
-                result.save(out_image_path)
+                result_img = result.convert("RGB")
+                
+            # Apply Text Preservation Mask mapping original text balloons over the generated image
+            mask_img = payload.get("text_preservation_mask")
+            base_img_path = payload.get("base_image_path")
+            
+            if mask_img is not None and base_img_path:
+                try:
+                    original_img = Image.open(base_img_path).convert("RGB")
+                    # Ensure same size just in case the engine upscaled
+                    if original_img.size != result_img.size:
+                        original_img = original_img.resize(result_img.size, Image.Resampling.LANCZOS)
+                    if mask_img.size != result_img.size:
+                        mask_img = mask_img.resize(result_img.size, Image.Resampling.LANCZOS)
+                        
+                    result_img = Image.composite(original_img, result_img, mask_img)
+                    runmeta["text_preservation_applied"] = True
+                except Exception as e:
+                    runmeta["text_preservation_applied"] = False
+                    runmeta["text_preservation_error"] = str(e)
+
+            # Save the final composited image
+            result_img.save(out_image_path)
 
             runmeta["output_image"] = str(out_image_path)
         except Exception as exc:

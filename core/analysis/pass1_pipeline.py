@@ -110,9 +110,16 @@ def generate_text_mask(page_image: str, output_mask: str, page_num: int) -> tupl
         logger.info("Using fallback template mask: %s", output_mask_path)
         return output_mask_path, "template_fallback", reason, deps
 
-    output_mask_path.write_bytes(b"")
-    reason = reason or "template mask not found"
-    logger.warning("No template mask found; writing empty placeholder: %s", output_mask_path)
+    try:
+        from PIL import Image
+        img = Image.new("L", (1024, 1024), 0)
+        img.save(output_mask_path)
+        reason = reason or "template mask not found (created blank)"
+        logger.warning("No template mask found; writing blank PIL image: %s", output_mask_path)
+    except Exception as exc:
+        logger.error("Failed to write blanket mask fallback: %s", exc)
+        reason = reason or "template mask not found"
+        
     return output_mask_path, "empty_fallback", reason, deps
 
 
