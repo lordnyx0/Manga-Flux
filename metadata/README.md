@@ -1,21 +1,21 @@
-# Contrato Pass1 -> Pass2 (`.meta.json`)
+# Contract Pass1 -> Pass2 (`.meta.json`)
 
-Cada página processada no Pass1 deve gerar um arquivo:
+Each page processed in Pass1 must generate a file:
 
 - `metadata/page_{NNN}.meta.json`
 
-## Chaves obrigatórias
+## Required keys
 
 - `page_num` (int)
-- `page_image` (str, caminho para imagem da página em P&B)
+- `page_image` (str, path to the B&W page image)
 - `page_seed` (int)
 - `page_prompt` (str)
-- `style_reference` (str, caminho para imagem de referência de estilo)
-- `text_mask` (str, caminho para máscara de texto/balões)
+- `style_reference` (str, path to the style reference image)
+- `text_mask` (str, path to the text/bubbles mask)
 
-> Exceção controlada: quando `ALLOW_NO_STYLE=1`, o Pass2 aceita metadado sem `style_reference`.
+> Controlled exception: when `ALLOW_NO_STYLE=1`, Pass2 accepts metadata without `style_reference`.
 
-## Exemplo
+## Example
 
 ```json
 {
