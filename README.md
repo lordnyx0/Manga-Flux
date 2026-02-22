@@ -39,17 +39,17 @@ Manga-Flux works by intercepting a local instance of **ComfyUI** via API. You wi
 
 ### YOLO / Pass1 (Manga Analysis)
 *   **Manga109 YOLO ONNX**: `data/models/manga109_yolo.onnx`
-    *   *Link*: [To be added]
+    *   *Link*: [https://huggingface.co/deepghs/manga109_yolo]
 
 ### ComfyUI / Pass2 (Diffusion Generation)
 *   **UNet (Base Model):** `flux-2-klein-9b-Q4_K_M.gguf` -> Place in `ComfyUI/models/unet/`
-    *   *Link*: [To be added]
+    *   *Link*: [https://huggingface.co/unsloth/FLUX.2-klein-9B-GGUF/tree/main]
 *   **LoRA (Style Injector):** `colorMangaKlein_9B.safetensors` -> Place in `ComfyUI/models/loras/`
-    *   *Link*: [To be added]
+    *   *Link*: [https://civitai.com/models/2395415?modelVersionId=2693376]
 *   **CLIP (Text Encoder):** `qwen_3_8b_fp4mixed.safetensors` -> Place in `ComfyUI/models/clip/`
-    *   *Link*: [To be added]
+    *   *Link*: [https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-9b/tree/main/split_files/text_encoders]
 *   **VAE:** `flux2-vae.safetensors` -> Place in `ComfyUI/models/vae/`
-    *   *Link*: [To be added]
+    *   *Link*: [https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-9b/tree/main/split_files/vae]
 
 ---
 
@@ -71,17 +71,17 @@ python run_two_pass_batch_local.py \
 ## 📄 Contracts and Architecture
 
 - `metadata/README.md` (Pass1 -> Pass2 Contract)
-- `DOCS/PHASE_B_IMPLEMENTATION.md` (FLUX Flow-Matching Generation Architecture)
-- `DOCS/PHASE_C_CORRECTION.md` (Passive Compositing and Active Inpainting)
+- `docs/PHASE_B_IMPLEMENTATION.md` (FLUX Flow-Matching Generation Architecture)
+- `docs/PHASE_C_CORRECTION.md` (Passive Compositing and Active Inpainting)
 - `core/utils/meta_validator.py` (P2 Validator)
 
 ## ▶️ Operation 
 
-- `DOCS/OPERATION.md` (Operation guide with batch commands)
+- `docs/OPERATION.md` (Operation guide with batch commands)
 
 ## 🔌 API and Chrome Extension
 
 - Local API: `api/server.py`
 - Companion extension: `extension/manga-flux-extension`
-- Full Guide: `DOCS/API_EXTENSION.md`
-- FAISS Adaptation Analysis: `DOCS/FAISS_ADAPTACAO_MANGA_FLUX.md`
+- Full Guide: `docs/API_EXTENSION.md`
+- FAISS Adaptation Analysis: `docs/FAISS_ADAPTATION_MANGA_FLUX.md`
