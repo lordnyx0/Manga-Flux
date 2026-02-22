@@ -1,220 +1,219 @@
-# Análise de Viabilidade — Migração para Manga-Flux (Pass1 preservado + Pass2 reescrito)
+# Feasibility Analysis — Migration to Manga-Flux (Pass1 preserved + Pass2 rewritten)
 
-## 1) Resumo executivo
+## 1) Executive Summary
 
-**Status atual do repositório:** **não operacional** para o fluxo descrito no plano. O repo está em estado de esqueleto incompleto, com forte indício de remoção/perda de código crítico (especialmente `core/`, `tests/` e scripts). O entrypoint principal (`run_pass2_local.py`) referencia módulos inexistentes (`core.generation.*`) e falha imediatamente com `ModuleNotFoundError`.
+**Current repository status:** **not operational** for the flow described in the plan. The repo is in an incomplete skeleton state, with a strong indication of critical code removal/loss (especially `core/`, `tests/` and scripts). The main entrypoint (`run_pass2_local.py`) references nonexistent modules (`core.generation.*`) and fails immediately with `ModuleNotFoundError`.
 
-**Conclusão de viabilidade:** a migração **é viável**, mas **não no estado atual sem recuperação/reconstrução de base**. A abordagem recomendada é tratar o projeto como “bootstrap + reconstrução dirigida por contrato” em 2 fases:
-1. **Fase de recuperação funcional mínima** (Pass1→Pass2 contract + interface + FluxEngine mock + pipeline rodando local).
-2. **Fase de produção** (integração Flux real, QA visual automatizado + humano, hardening, limpeza de legado).
+**Feasibility conclusion:** migration **is feasible**, but **not in the current state without base recovery/reconstruction**. The recommended approach is to treat the project as "bootstrap + contract-driven reconstruction" in 2 phases:
+1. **Minimum functional recovery phase** (Pass1→Pass2 contract + interface + FluxEngine mock + local running pipeline).
+2. **Production phase** (real Flux integration, automated + human visual QA, hardening, legacy cleanup).
 
-**Estimativa realista a partir deste estado:**
-- **MVP funcional (mock + contrato + execução):** 2–4 dias úteis.
-- **Flux real + QA + hardening:** +3–7 dias úteis (dependendo de acesso ao modelo/infra GPU).
-
----
-
-## 2) Metodologia usada nesta análise
-
-Foi feita inspeção estrutural do repositório e validação básica de execução:
-
-- Inventário de arquivos e diretórios versionados.
-- Verificação de branches/tags e histórico recente.
-- Inspeção dos arquivos-chave presentes (`README`, entrypoint, configurações, workflow).
-- Teste direto de execução do entrypoint para validar integridade mínima.
+**Realistic estimate from this state:**
+- **Functional MVP (mock + contract + execution):** 2–4 business days.
+- **Real Flux + QA + hardening:** +3–7 business days (depending on model/GPU infrastructure access).
 
 ---
 
-## 3) Diagnóstico objetivo do estado atual
+## 2) Methodology used in this analysis
 
-## 3.1 Estrutura encontrada (alto impacto)
+Structural repository inspection and basic execution validation were performed:
 
-- O repositório contém poucos arquivos de código-fonte Python (praticamente `run_pass2_local.py` e `config/settings.py`) e um volume muito grande de artefatos `.pt` em `data/embeddings/`.
-- Não há diretório `core/` versionado, embora ele seja importado no entrypoint principal.
-- Também não há `tests/` no estado atual, apesar de o workflow de CI depender fortemente desses caminhos.
+- Inventory of versioned files and directories.
+- Verification of branches/tags and recent history.
+- Inspection of key present files (`README`, entrypoint, configurations, workflow).
+- Direct execution test of the entrypoint to validate minimal integrity.
 
-## 3.2 Entrypoint quebrado
+---
 
-- `run_pass2_local.py` importa:
+## 3) Objective diagnosis of current state
+
+## 3.1 Found structure (high impact)
+
+- The repository contains few Python source code files (practically `run_pass2_local.py` and `config/settings.py`) and a very large volume of `.pt` artifacts in `data/embeddings/`.
+- There is no versioned `core/` directory, although it is imported in the main entrypoint.
+- There is also no `tests/` in the current state, despite the CI workflow relying heavily on these paths.
+
+## 3.2 Broken entrypoint
+
+- `run_pass2_local.py` imports:
   - `core.generation.pipeline.Pass2Generator`
   - `core.generation.engines.flux_engine.FluxEngine`
   - `core.generation.engines.dummy_engine.DummyEngine`
-- Como `core/` não existe no repositório atual, o script falha antes mesmo de parsear argumentos.
+- Since `core/` does not exist in the current repository, the script fails even before parsing arguments.
 
-## 3.3 CI inconsistente com o conteúdo do repo
+## 3.3 CI inconsistent with repo content
 
-- Workflow `.github/workflows/test.yml` executa `pytest tests/high`, `tests/medium`, `tests/low` e lint em `core/` e `utils/`.
-- Esses diretórios não estão presentes no snapshot atual do repositório.
-- Resultado: a CI definida não representa o estado real do código e provavelmente quebraria em ambiente limpo.
+- `.github/workflows/test.yml` workflow executes `pytest tests/high`, `tests/medium`, `tests/low` and linting in `core/` and `utils/`.
+- These directories are not present in the current snapshot of the repository.
+- Result: the defined CI does not represent the real state of the code and would probably break in a clean environment.
 
-## 3.4 Evidências de “pass1/pass2” apenas em artefato de saída
+## 3.4 Evidence of "pass1/pass2" only in output artifact
 
-- Existe metadata de teste já gerada em `outputs/test_run/metadata/page_001.meta.json` com chaves alinhadas ao contrato planejado (`page_num`, `page_image`, `page_seed`, `page_prompt`, `style_reference`, `text_mask`).
-- Porém não existe implementação rastreável no repo atual para gerar isso de forma reproduzível via pipeline completo.
+- There is test metadata already generated in `outputs/test_run/metadata/page_001.meta.json` with keys aligned to the planned contract (`page_num`, `page_image`, `page_seed`, `page_prompt`, `style_reference`, `text_mask`).
+- However, there is no traceable implementation in the current repo to generate this reproducibly via a complete pipeline.
 
 ---
 
-## 4) Comparação com o plano inicial (item a item)
+## 4) Comparison with the initial plan (item by item)
 
-Escala de status:
-- ✅ **Concluído**
-- 🟡 **Parcial / indício**
-- ❌ **Não implementado / indisponível no repo**
+Status scale:
+- ✅ **Completed**
+- 🟡 **Partial / indication**
+- ❌ **Not implemented / unavailable in repo**
 
-### 0 — Preparação de branches (`main`, `dev`, feature branches)
+### 0 — Preparation of branches (`main`, `dev`, feature branches)
 - **Status:** ❌
-- **Achado:** branch local atual é `work`; não foram identificadas tags de release (`v0.1-flux-skeleton`, `v0.2-flux-integrated`) nem convenção de branches do plano.
-- **Impacto:** reduz rastreabilidade e disciplina de integração.
+- **Finding:** current local branch is `work`; no release tags (`v0.1-flux-skeleton`, `v0.2-flux-integrated`) or branch convention from the plan were identified.
+- **Impact:** reduces traceability and integration discipline.
 
-### 1 — Contrato Pass1→Pass2 (`metadata/` + validador)
+### 1 — Pass1→Pass2 Contract (`metadata/` + validator)
 - **Status:** 🟡
-- **Achado:** há exemplo de metadata com chaves corretas em `outputs/test_run/metadata/...`.
-- **Lacuna crítica:** não há `metadata/README.md` contratual nem `core/utils/meta_validator.py` presente/operacional no repo.
+- **Finding:** there is an example metadata with correct keys in `outputs/test_run/metadata/...`.
+- **Critical gap:** there is no contractual `metadata/README.md` or `core/utils/meta_validator.py` present/operational in the repo.
 
-### 2 — Interface `ColorizationEngine`
+### 2 — `ColorizationEngine` Interface
 - **Status:** ❌
-- **Achado:** arquivo `core/generation/interfaces.py` não encontrado.
+- **Finding:** `core/generation/interfaces.py` file not found.
 
 ### 3 — `FluxEngine` skeleton (mock)
 - **Status:** ❌
-- **Achado:** entrypoint referencia `core/generation/engines/flux_engine.py`, mas arquivo não está no repositório.
+- **Finding:** entrypoint references `core/generation/engines/flux_engine.py`, but file is not in the repository.
 
-### 4 — SD Adapter opcional
+### 4 — Optional SD Adapter
 - **Status:** ❌
-- **Achado:** não identificado `engines/sd_adapter.py`.
+- **Finding:** `engines/sd_adapter.py` not identified.
 
-### 5 — Integração real do Flux (img2img full-frame com style ref)
+### 5 — Real Flux Integration (full-frame img2img with style ref)
 - **Status:** ❌
-- **Achado:** existe apenas configuração YAML com parâmetros gerais; não há implementação de engine no repo atual.
+- **Finding:** there is only a YAML configuration with general parameters; no engine implementation is in the current repo.
 
-### 6 — QA visual automático + processo humano
+### 6 — Automated + human visual QA
 - **Status:** ❌
-- **Achado:** não existem `tests/visual/run_batch.sh`, `tests/visual/eval.py` e fluxo QA descrito.
+- **Finding:** `tests/visual/run_batch.sh`, `tests/visual/eval.py` and described QA flow do not exist.
 
-### 7 — Hardening (seed determinística, logs per-page, fallback OOM)
+### 7 — Hardening (deterministic seed, per-page logs, OOM fallback)
 - **Status:** 🟡
-- **Achado:** seed determinística operacional no contrato Pass1, runmeta do Pass2 com `duration_ms`/`timestamp_utc`/`options`, resumo por lote (`batch_summary.json`) e validação de consistência reforçada; fallback específico para OOM ainda pendente.
+- **Finding:** operational deterministic seed in Pass1 contract, Pass2 runmeta with `duration_ms`/`timestamp_utc`/`options`, batch summary (`batch_summary.json`) and reinforced consistency validation; specific OOM fallback still pending.
 
-### 8 — Limpeza de legado (arquivar SD/tile RGB fora do caminho crítico)
-- **Status:** ❌ (não verificável)
-- **Achado:** não há base suficiente no repositório atual para confirmar presença/remoção estruturada de legado.
+### 8 — Legacy cleanup (archive SD/RGB tile outside critical path)
+- **Status:** ❌ (unverifiable)
+- **Finding:** not enough basis in the current repository to confirm structured presence/removal of legacy.
 
-### 9 — Documentação operacional (`README` + `DOCS/OPERATION.md`)
+### 9 — Operational documentation (`README` + `DOCS/OPERATION.md`)
 - **Status:** 🟡
-- **Achado:** README segue ativo e já referencia operação; `DOCS/OPERATION.md` foi adicionado com fluxo local executável, mas ainda faltam cenários avançados de produção/GPU.
+- **Finding:** README remains active and already references operation; `DOCS/OPERATION.md` was added with runnable local flow, but advanced production/GPU scenarios are still missing.
 
-### 10 — Preparar para Qwen (stub + adapter spec)
+### 10 — Prepare for Qwen (stub + adapter spec)
 - **Status:** ❌
-- **Achado:** inexistente no snapshot atual.
+- **Finding:** nonexistent in current snapshot.
 
 ---
 
-## 5) Principais riscos (e por que o pass1 “degradou”)
+## 5) Main risks (and why pass1 "degraded")
 
-1. **Perda de código-fonte crítico no versionamento**
-   - Indício forte: imports para módulos ausentes + CI apontando para estruturas inexistentes.
-2. **Repo poluído por artefatos de dados e pobre em código executável**
-   - Grande volume de `data/embeddings/*.pt` sem contrapartida de pipeline modular disponível.
-3. **Quebra de confiança operacional**
-   - README promete capacidades não comprováveis via execução imediata.
-4. **Ausência de contrato formal em arquivo canônico**
-   - Há metadado exemplo, mas sem validador acoplado no caminho principal.
-
----
-
-## 6) Viabilidade técnica (objetiva)
-
-**É viável?** Sim.
-
-**Condições para viabilizar rapidamente:**
-- Tratar o estado atual como **base incompleta**, não como produto quase-pronto.
-- Reconstituir primeiro o **esqueleto mínimo do plano** (Pass1 contract + engine interface + engine mock + pipeline runner).
-- Só então plugar Flux real e validar qualidade.
-
-**Dependências externas críticas:**
-- Acesso ao modelo Flux Klein 9B (ou endpoint equivalente).
-- Ambiente GPU com VRAM suficiente para teste (ideal >=12GB com estratégia de offload).
-- Conjunto mínimo de páginas e style refs para QA visual.
+1. **Loss of critical source code in versioning**
+   - Strong indication: imports for missing modules + CI pointing to nonexistent structures.
+2. **Repo polluted by data artifacts and poor in executable code**
+   - Large volume of `data/embeddings/*.pt` without counterpart of modular available pipeline.
+3. **Breakage of operational trust**
+   - README promises capabilities unverifiable via immediate execution.
+4. **Absence of formal contract in canonical file**
+   - Metadata example exists, but without coupled validator in the main path.
 
 ---
 
-## 7) Plano de recuperação recomendado (priorizado)
+## 6) Technical feasibility (objective)
 
-## Fase A — Recuperação funcional mínima (prioridade máxima)
+**Is it feasible?** Yes.
 
-1. **Restaurar árvore base de código**
-   - Criar/recuperar: `core/analysis`, `core/generation`, `core/utils`, `scripts`, `tests`.
-2. **Implementar contrato Pass1→Pass2 formal**
+**Conditions to quickly make it feasible:**
+- Treat the current state as **incomplete base**, not an almost-ready product.
+- First reconstruct the **minimal plan skeleton** (Pass1 contract + engine interface + engine mock + pipeline runner).
+- Only then plug real Flux and validate quality.
+
+**Critical external dependencies:**
+- Access to the Flux Klein 9B model (or equivalent endpoint).
+- GPU environment with sufficient VRAM for testing (ideal >=12GB with offload strategy).
+- Minimum set of pages and style refs for visual QA.
+
+---
+
+## 7) Recommended recovery plan (prioritized)
+
+## Phase A — Minimal functional recovery (highest priority)
+
+1. **Restore base code tree**
+   - Create/recover: `core/analysis`, `core/generation`, `core/utils`, `scripts`, `tests`.
+2. **Implement formal Pass1→Pass2 contract**
    - `metadata/README.md` + `core/utils/meta_validator.py`.
-3. **Criar interface estável de engine**
+3. **Create stable engine interface**
    - `core/generation/interfaces.py` (`ColorizationEngine`).
-4. **Implementar FluxEngine mock**
-   - valida style ref + preserva texto por máscara + I/O consistente.
-5. **Reconectar entrypoint**
-   - `run_pass2_local.py` funcional com `--meta`, `--output`, `--engine`.
+4. **Implement FluxEngine mock**
+   - validates style ref + preserves text by mask + consistent I/O.
+5. **Reconnect entrypoint**
+   - functional `run_pass2_local.py` with `--meta`, `--output`, `--engine`.
 
-**Gate de saída da Fase A:** comando local roda fim-a-fim com dummy/mock e gera imagem + runmeta.
+**Phase A exit gate:** local command runs end-to-end with dummy/mock and outputs image + runmeta.
 
-## Fase B — Integração de produção
+## Phase B — Production integration
 
-6. **Integrar Flux real no engine**
-   - img2img full-frame + style ref obrigatória + seed/strength/sampler configuráveis.
-7. **QA automatizado + humano**
-   - batch visual, métricas (SSIM/LPIPS opcional), CSV de aprovação.
-8. **Hardening e observabilidade**
-   - seed determinística, logs per-page, fallback OOM.
-9. **Higienização de legado**
-   - arquivar código antigo e remover caminhos críticos instáveis.
-10. **Documentação operacional de verdade**
-   - README executável + `DOCS/OPERATION.md`.
-
----
-
-## 8) Recomendação sobre governança de branches
-
-Para alinhar com seu plano original e evitar nova regressão:
-
-- Reestabelecer imediatamente:
-  - `main` estável
-  - `dev` integração
-  - feature branches curtas por etapa
-- Exigir PR pequeno por milestone (contrato, interface, mock, integração real, QA).
-- Reativar tags semânticas de progresso (`v0.1-flux-skeleton`, `v0.2-flux-integrated`, etc.).
+6. **Integrate real Flux into engine**
+   - full-frame img2img + mandatory style ref + configurable seed/strength/sampler.
+7. **Automated + human QA**
+   - visual batch, metrics (optional SSIM/LPIPS), approval CSV.
+8. **Hardening and observability**
+   - deterministic seed, per-page logs, OOM fallback.
+9. **Legacy sanitization**
+   - archive old code and remove unstable critical paths.
+10. **Real operational documentation**
+   - Executable README + `DOCS/OPERATION.md`.
 
 ---
 
-## 9) Parecer final
+## 8) Recommendation on branch governance
 
-O projeto **não está pronto** no estado atual e apresenta sinais claros de “apagamento” de partes centrais da arquitetura planejada. Ainda assim, a migração é plenamente **recuperável e viável** se você reintroduzir disciplina de contrato, modularidade por interface e pipeline incremental (mock → real → QA).
+To align with your original plan and avoid new regression:
 
-Em termos práticos: **não recomendo tentar “consertar por remendo” o estado atual**. Recomendo executar a recuperação por fases acima e tratar cada fase como critério de aceite formal.
-
+- Immediately re-establish:
+  - stable `main`
+  - integration `dev`
+  - short feature branches by stage
+- Require small PR per milestone (contract, interface, mock, real integration, QA).
+- Reactivate semantic progress tags (`v0.1-flux-skeleton`, `v0.2-flux-integrated`, etc.).
 
 ---
 
-## 10) Atualização de status (pós-recuperação Fase A)
+## 9) Final opinion
 
-**Data:** 2026-02-16
+The project is **not ready** in its current state and displays clear signs of "erasure" of central parts of the planned architecture. Still, migration is fully **recoverable and feasible** if you reintroduce contract discipline, modularity by interface, and incremental pipeline (mock → real → QA).
 
-A Fase A de recuperação foi **concluída com sucesso**:
+In practical terms: **I do not recommend trying to "patch fix" the current state**. I recommend executing the phased recovery above and treating each phase as a formal acceptance criteria.
 
-- ✅ Árvore base de código restaurada (`core/`, `scripts/`, `config/`)
-- ✅ Contrato Pass1→Pass2 implementado (`core/analysis/pass1_contract.py`, `core/utils/meta_validator.py`)
-- ✅ Interface estável de engine (`core/generation/interfaces.py`)
-- ✅ FluxEngine mock + DummyEngine implementados (`core/generation/engines/`)
-- ✅ Entrypoints funcionais:
-  - `run_pass1_local.py` (Pass1 standalone)
-  - `run_two_pass_batch_local.py` (Pass1→Pass2 integrado)
-- ✅ Dependências do Pass1 resolvidas (torch, numpy, PIL, cv2, YOLO, SAM)
-- ✅ Execução em lote de 3 páginas reais com `mode=ported_pass1` (sem fallback)
-- ✅ Validação contratual passando (`scripts/validate_two_pass_outputs.py`)
+---
 
-**Comandos de validação:**
+## 10) Status Update (post-recovery Phase A)
+
+**Date:** 2026-02-16
+
+Phase A recovery was **successfully completed**:
+
+- ✅ Base code tree restored (`core/`, `scripts/`, `config/`)
+- ✅ Pass1→Pass2 Contract implemented (`core/analysis/pass1_contract.py`, `core/utils/meta_validator.py`)
+- ✅ Stable engine interface (`core/generation/interfaces.py`)
+- ✅ FluxEngine mock + DummyEngine implemented (`core/generation/engines/`)
+- ✅ Functional entrypoints:
+  - `run_pass1_local.py` (standalone Pass1)
+  - `run_two_pass_batch_local.py` (integrated Pass1→Pass2)
+- ✅ Pass1 dependencies resolved (torch, numpy, PIL, cv2, YOLO, SAM)
+- ✅ Batch execution of 3 real pages with `mode=ported_pass1` (no fallback)
+- ✅ Contract validation passing (`scripts/validate_two_pass_outputs.py`)
+
+**Validation commands:**
 ```bash
-# Verificar dependências
+# Verify dependencies
 python scripts/pass1_dependency_report.py
 
-# Executar lote Pass1→Pass2
+# Execute Pass1→Pass2 batch
 python run_two_pass_batch_local.py \
   --input-dir data/pages_bw \
   --style-reference data/dummy_manga_test.png \
@@ -224,58 +223,58 @@ python run_two_pass_batch_local.py \
   --chapter-id test_chapter \
   --engine dummy
 
-# Validar artefatos
+# Validate artifacts
 python scripts/validate_two_pass_outputs.py \
   --metadata-dir metadata \
   --pass2-dir outputs/pass2 \
   --expected-pages 3
 ```
 
-**Próximos passos (Fase B):**
-- Integrar Flux real no engine
-- QA automatizado + processo humano
-- Hardening e observabilidade completa
+**Next steps (Phase B):**
+- Integrate real Flux into engine
+- Automated QA + human process
+- Full hardening and observability
 
 
-## 11) Atualização incremental (Fase B parcial)
+## 11) Incremental update (Partial Phase B)
 
-**Data:** 2026-02-17
+**Date:** 2026-02-17
 
-Avanços incrementais implementados:
+Incremental advancements implemented:
 
-- ✅ Pass2 com observabilidade reforçada em runmeta (`duration_ms`, `timestamp_utc`, `options`, `output_image`)
-- ✅ CLI local do Pass2 com controles explícitos de geração (`--strength`, `--seed-override`)
-- ✅ Batch integrado com parâmetros de Pass2 (`--pass2-strength`, `--pass2-seed-offset`, `--pass2-option`)
-- ✅ Geração de resumo por lote (`outputs/pass2/batch_summary.json`)
-- ✅ Guia de operação local publicado (`DOCS/OPERATION.md`)
-- ✅ Validador de artefatos mais robusto (descoberta dinâmica de páginas, consistência de `output_image` e checagem opcional de `batch_summary.json`)
+- ✅ Pass2 with reinforced observability in runmeta (`duration_ms`, `timestamp_utc`, `options`, `output_image`)
+- ✅ Pass2 local CLI with explicit generation controls (`--strength`, `--seed-override`)
+- ✅ Integrated batch with Pass2 parameters (`--pass2-strength`, `--pass2-seed-offset`, `--pass2-option`)
+- ✅ Batch summary generation (`outputs/pass2/batch_summary.json`)
+- ✅ Local operation guide published (`DOCS/OPERATION.md`)
+- ✅ More robust artifact validator (dynamic page discovery, `output_image` consistency, and optional `batch_summary.json` check)
 
-Pendências para completar Fase B:
+Pendings to complete Phase B:
 
-- Integrar engine Flux real (inferência de produção)
-- Implementar fallback OOM dedicado e telemetria de memória
-- Institucionalizar QA visual automatizado + humano
+- Integrate real Flux engine (production inference)
+- Implement dedicated OOM fallback and memory telemetry
+- Institutionalize automated + human visual QA
 
 
-## 12) Atualização incremental (API + extensão)
+## 12) Incremental update (API + extension)
 
-**Data:** 2026-02-17
+**Date:** 2026-02-17
 
-Avanços desta iteração:
+Advancements of this iteration:
 
-- ✅ API local mínima implementada (`api/server.py`) com `/health` e `/v1/pass2/run`
-- ✅ Companion extension MV3 iniciada (`extension/manga-flux-extension`) para health-check
-- ✅ Documentação dedicada adicionada (`DOCS/API_EXTENSION.md`)
+- ✅ Minimal local API implemented (`api/server.py`) with `/health` and `/v1/pass2/run`
+- ✅ Companion extension MV3 started (`extension/manga-flux-extension`) for health-check
+- ✅ Dedicated documentation added (`DOCS/API_EXTENSION.md`)
 
-Pendências seguintes:
+Next pendings:
 
-- [x] autenticação local opcional (token)
-- [x] endpoint batch na API (`POST /v1/pass2/batch`)
-- [x] extensão com formulário para acionar `/v1/pass2/run`
-- [x] extensão com formulário para acionar `/v1/pass2/batch`
-- [x] histórico local de execuções na extensão
-- [x] pipeline de capítulo via API a partir de URLs de páginas
-- [x] captura de imagens da aba atual na extensão
-- [x] tema claro/escuro e UX de miniaturas com remoção individual
-- [x] persistência de estado da extensão para uso após minimizar/fechar popup
-- [ ] integração FAISS no fluxo online (index/search)
+- [x] optional local authentication (token)
+- [x] API batch endpoint (`POST /v1/pass2/batch`)
+- [x] extension with form to trigger `/v1/pass2/run`
+- [x] extension with form to trigger `/v1/pass2/batch`
+- [x] local execution history in the extension
+- [x] chapter pipeline via API from page URLs
+- [x] current tab image capture in extension
+- [x] light/dark theme and thumbnail UX with individual removal
+- [x] extension state persistence for use after minimizing/closing popup
+- [ ] FAISS integration in online flow (index/search)

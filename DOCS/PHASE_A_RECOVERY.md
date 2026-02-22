@@ -1,46 +1,46 @@
-# Histórico de Recuperação (Fase A)
+# Recovery History (Phase A)
 
-Este documento consolida o histórico da Fase A do projeto Manga-Flux, que teve como objetivo restaurar a execução ponta-a-ponta do Pass1+Pass2 com um contrato estável e um motor de simulação (mock engine). Além disso, registra a recuperação e adaptação do Pass1 legado a partir da base `/manga`.
+This document consolidates the history of Phase A of the Manga-Flux project, which aimed to restore end-to-end execution of Pass1+Pass2 with a stable contract and a simulation engine (mock engine). Furthermore, it logs the recovery and adaptation of the legacy Pass1 from the `/manga` base.
 
-## 1. Recuperação do Pass1 baseada em `/manga`
+## 1. Pass1 Recovery based on `/manga`
 
-A recuperação do Pass1 foi feita por **adaptação interna** para o Manga-Flux, usando `/manga` historicamente como fonte de código.
+Pass1 recovery was done by **internal adaptation** to Manga-Flux, using `/manga` historically as the source code base.
 
-### Diretriz Aplicada
-- `/manga` serviu como **base de código** para a migração inicial.
-- Não existe ligação em tempo de runtime entre repositórios.
-- O Pass1 vive no próprio Manga-Flux (em `core/analysis`).
+### Applied Guideline
+- `/manga` served as the **codebase** for the initial migration.
+- There is no runtime link between repositories.
+- Pass1 lives within Manga-Flux itself (in `core/analysis`).
 
-### Arquivos Portados
-Alguns dos arquivos portados da base histórica para o projeto:
+### Ported Files
+Some of the files ported from the historical base to the project:
 - `core/pass1_analyzer.py`
 - `core/analysis/mask_processor.py`, `segmentation.py`, `z_buffer.py`, `pass1_pipeline.py`
 - `core/detection/yolo_detector.py`, `nms_custom.py`
-- Utilitários e constantes.
+- Utilities and constants.
 
-As dependências garantem que o orquestrador execute de forma autônoma sem a base legada em runtime. O comando histórico para verificar o estado das dependências era `python scripts/pass1_dependency_report.py`.
+Dependencies ensure the orchestrator runs autonomously without the legacy base at runtime. The historical command to check dependency state was `python scripts/pass1_dependency_report.py`.
 
-## 2. Plano de Recuperação Funcional Mínima (Fase A)
+## 2. Minimal Functional Recovery Plan (Phase A)
 
-O objetivo desta fase foi alcançado: restaurar a execução do pipeline (Pass1 -> Pass2) mock, garantindo o contrato (JSON metadata) entre eles e os testes locais, para a viabilidade da reconstrução das interfaces sistêmicas.
+The goal of this phase was achieved: restore the pipeline execution (Pass1 -> Pass2) mock, ensuring the contract (JSON metadata) between them and local tests, for the feasibility of systemic interface reconstruction.
 
-### Checklist (Concluído)
-- [x] Remover estratégia de adapter para repositório legado em runtime.
-- [x] Criar contrato formal de metadata (`metadata/README.md`) e validador (`core/utils/meta_validator.py`).
-- [x] Centralizar Pass1 no módulo interno e garantir exportação de metadados.
-- [x] Implementar interfaces e mocks (`FluxEngine` skeleton, `DummyEngine`).
-- [x] Integrar Pass1->Pass2 em script de lote (`run_two_pass_batch_local.py`) e testar smoke scripts (`scripts/pass1_smoke.sh`, `scripts/recovery_batch_smoke.sh`).
-- [x] Validar 3 páginas reais com máscara + metadados válidos (mode=ported_pass1, sem fallback).
-- [x] Hardening e adição de observabilidade (runmeta JSON com `duration_ms`, `timestamp_utc`, controle de seeds e steps).
-- [x] Reforçar validador de lote de Pass2 (`batch_summary.json`).
-- [x] Documentar operação (`DOCS/OPERATION.md`).
-- [x] Começar infraestrutura da API (`api/server.py`) com autenticação, `/health`, `/v1/pass2/run`, `/v1/pass2/batch` e `/v1/pipeline/run_chapter`.
-- [x] Criar e melhorar Companion Extension (Chrome MV3) para acionar API e realizar testes locais e de capturas de tela.
+### Checklist (Completed)
+- [x] Remove adapter strategy for legacy repository at runtime.
+- [x] Create formal metadata contract (`metadata/README.md`) and validator (`core/utils/meta_validator.py`).
+- [x] Centralize Pass1 in the internal module and ensure metadata export.
+- [x] Implement interfaces and mocks (`FluxEngine` skeleton, `DummyEngine`).
+- [x] Integrate Pass1->Pass2 in a batch script (`run_two_pass_batch_local.py`) and test smoke scripts (`scripts/pass1_smoke.sh`, `scripts/recovery_batch_smoke.sh`).
+- [x] Validate 3 real pages with mask + valid metadata (mode=ported_pass1, no fallback).
+- [x] Hardening and observability addition (runmeta JSON with `duration_ms`, `timestamp_utc`, seeds and steps control).
+- [x] Reinforce Pass2 batch validator (`batch_summary.json`).
+- [x] Document operation (`DOCS/OPERATION.md`).
+- [x] Start API infrastructure (`api/server.py`) with authentication, `/health`, `/v1/pass2/run`, `/v1/pass2/batch` and `/v1/pipeline/run_chapter`.
+- [x] Create and improve Companion Extension (Chrome MV3) to trigger API and perform local and screenshot tests.
 
-### Funcionalidade Pendente (Transferida para Fase B/C)
-- [ ] Integrar FAISS no fluxo de capítulo (indexação + busca semântica).
+### Pending Functionality (Moved to Phase B/C)
+- [ ] Integrate FAISS in the chapter flow (indexing + semantic search).
 
-## 3. Critério de Saída (Status da Fase A)
-- O Pass1 gera arquivos `metadata/page_{NNN}.meta.json` válidos.
-- O Pass2 consome validamente a metadata e produz a imagem mockada + um arquivo de relatório `runmeta.json`.
-- Status: **Atingido** com a pipeline unificada em scripts e API.
+## 3. Exit Criteria (Phase A Status)
+- Pass1 generates valid `metadata/page_{NNN}.meta.json` files.
+- Pass2 validly consumes the metadata and produces the mocked image + a `runmeta.json` report file.
+- Status: **Achieved** with the unified pipeline in scripts and API.

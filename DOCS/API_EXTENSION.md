@@ -1,117 +1,117 @@
-# API local e extensão (Manga-Flux)
+# Local API and Extension (Manga-Flux)
 
-> Nota: a API já estava em desenvolvimento. Este documento consolida o estado atual e os endpoints operacionais.
+> Note: the API was already under development. This document consolidates the current state and operational endpoints.
 
-## Checklist (API + extensão)
+## Checklist (API + extension)
 
 ### API
 
-- [x] Endpoint `GET /health` implementado
-- [x] Endpoint `POST /v1/pass2/run` implementado
-- [x] Endpoint `POST /v1/pass2/batch` implementado
-- [x] Endpoint `POST /v1/pipeline/run_chapter` implementado (ingestão via URLs **e upload local** de imagens)
-- [x] Validação de payload (`engine`, `strength`, `seed_override`, `options`)
-- [x] Compatibilidade com metadata cross-platform (paths `\` / `/`)
-- [x] Autenticação local opcional (token via `MANGA_FLUX_API_TOKEN` + header `X-API-Token`)
+- [x] `GET /health` endpoint implemented
+- [x] `POST /v1/pass2/run` endpoint implemented
+- [x] `POST /v1/pass2/batch` endpoint implemented
+- [x] `POST /v1/pipeline/run_chapter` endpoint implemented (ingestion via URLs **and local image upload**)
+- [x] Payload validation (`engine`, `strength`, `seed_override`, `options`)
+- [x] Cross-platform metadata compatibility (paths `\` / `/`)
+- [x] Optional local authentication (token via `MANGA_FLUX_API_TOKEN` + `X-API-Token` header)
 
-### Extensão
+### Extension
 
-- [x] Popup MV3 criada
-- [x] Persistência de configuração no `chrome.storage.local`
-- [x] Health-check para `GET /health`
-- [x] Form para `POST /v1/pass2/run`
-- [x] Form para `POST /v1/pass2/batch`
-- [x] Exibição de histórico local de execuções (últimos 20 eventos)
-- [x] Captura de imagens da aba atual para envio ao pipeline
-- [x] Upload de imagens locais do PC para envio ao pipeline
-- [x] Tema claro/escuro (com modo automático)
-- [x] Visualização em miniaturas das imagens capturadas
-- [x] Remoção individual de miniaturas
-- [x] Persistência de estado para uso mesmo com popup minimizada/fechada
+- [x] MV3 Popup created
+- [x] Configuration persistence in `chrome.storage.local`
+- [x] Health-check for `GET /health`
+- [x] Form for `POST /v1/pass2/run`
+- [x] Form for `POST /v1/pass2/batch`
+- [x] Display of local execution history (last 20 events)
+- [x] Current tab image capture to send to pipeline
+- [x] Local PC image upload to send to pipeline
+- [x] Light/dark theme (with auto mode)
+- [x] Thumbnail view of captured images
+- [x] Individual thumbnail removal
+- [x] State persistence for use even with minimized/closed popup
 
-## API local
+## Local API
 
-Subir servidor:
+Start server:
 
 ```bash
 python api/server.py --host 127.0.0.1 --port 8765
 ```
 
-Com autenticação por token (opcional):
+With token authentication (optional):
 
 ```bash
-MANGA_FLUX_API_TOKEN=seu_token python api/server.py --host 127.0.0.1 --port 8765
+MANGA_FLUX_API_TOKEN=your_token python api/server.py --host 127.0.0.1 --port 8765
 ```
 
 ### Endpoints
 
 - `GET /health`
-  - status básico do serviço
-  - informa se token está habilitado (`token_required`)
+  - basic service status
+  - informs if token is enabled (`token_required`)
 
 - `POST /v1/pass2/run`
-  - executa Pass2 para uma página
+  - executes Pass2 for a single page
 
 - `POST /v1/pass2/batch`
-  - executa Pass2 para todos os `page_*.meta.json` em `metadata_dir`
+  - executes Pass2 for all `page_*.meta.json` in `metadata_dir`
 
 - `POST /v1/pipeline/run_chapter`
-  - fluxo fim-a-fim Pass1+Pass2 a partir de URLs de imagens ou upload local (base64)
-  - suporta referência de estilo por URL **ou upload (base64)**
-  - salva em `output/<manga_id>/chapters/<chapter_id>/...`
+  - End-to-end Pass1+Pass2 flow from image URLs or local upload (base64)
+  - supports style reference by URL **or upload (base64)**
+  - saves to `output/<manga_id>/chapters/<chapter_id>/...`
 
-Exemplo de body para `run_chapter`:
+Example body for `run_chapter`:
 
 ```json
 {
   "manga_id": "my_manga",
   "chapter_id": "chapter_001",
   "style_reference_url": "https://.../style.png",
-  "style_reference_base64": "<base64 opcional enviado pela extensão>",
+  "style_reference_base64": "<optional base64 sent by extension>",
   "style_reference_filename": "style.png",
   "page_urls": [
     "https://.../page1.png"
   ],
   "page_uploads": [
-    {"filename": "page2.png", "content_base64": "<base64 da imagem local>"}
+    {"filename": "page2.png", "content_base64": "<local image base64>"}
   ],
   "engine": "dummy",
   "strength": 1.0
 }
 ```
 
-## Extensão Chrome (Companion)
+## Chrome Extension (Companion)
 
-Pasta da extensão:
+Extension folder:
 
 - `extension/manga-flux-extension`
 
-Carregar no Chrome:
+Load in Chrome:
 
-1. Abrir `chrome://extensions`
-2. Ativar **Developer mode**
-3. Clicar em **Load unpacked**
-4. Selecionar `extension/manga-flux-extension`
+1. Open `chrome://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked**
+4. Select `extension/manga-flux-extension`
 
-A popup permite:
+The popup allows you to:
 
-- salvar URL/token da API
-- executar health-check (`GET /health`)
-- executar Pass2 single-page (`POST /v1/pass2/run`)
-- executar Pass2 batch (`POST /v1/pass2/batch`)
-- executar pipeline de capítulo (`POST /v1/pipeline/run_chapter`)
-- visualizar histórico local das últimas execuções
-- alternar entre tema claro/escuro/auto
-- visualizar miniaturas das imagens capturadas/upload local e remover individualmente
-- manter configuração/estado após minimizar/fechar popup
+- save API URL/token
+- run health-check (`GET /health`)
+- run single-page Pass2 (`POST /v1/pass2/run`)
+- run batch Pass2 (`POST /v1/pass2/batch`)
+- run chapter pipeline (`POST /v1/pipeline/run_chapter`)
+- view local history of recent executions
+- switch between light/dark/auto theme
+- view thumbnails of captured/local uploaded images and remove individually
+- keep configuration/state after minimizing/closing popup
 
-## Análise FAISS
+## FAISS Analysis
 
-- Ver análise e plano de adaptação: `DOCS/FAISS_ADAPTACAO_MANGA_FLUX.md`
+- See analysis and adaptation plan: `DOCS/FAISS_ADAPTACAO_MANGA_FLUX.md`
 
-## Status consolidado no plano de recuperação
+## Consolidated status in recovery plan
 
-Os itens de API/extensão acima também foram refletidos no checklist principal de recuperação:
+The API/extension items above were also reflected in the main recovery checklist:
 
 - `RECUPERACAO_FUNCIONAL_MINIMA.md`
 - `VIABILIDADE.md`

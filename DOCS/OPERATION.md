@@ -1,14 +1,14 @@
-# Manga-Flux — Operação local
+# Manga-Flux — Local Operation
 
-Este guia descreve o fluxo operacional mínimo para execução local do pipeline Two-Pass.
+This guide describes the minimum operational flow for running the Two-Pass pipeline locally.
 
-## 1) Verificar ambiente
+## 1) Verify environment
 
 ```bash
 python scripts/pass1_dependency_report.py
 ```
 
-## 2) Rodar batch Pass1 -> Pass2
+## 2) Run Pass1 -> Pass2 batch
 
 ```bash
 python run_two_pass_batch_local.py \
@@ -25,7 +25,7 @@ python run_two_pass_batch_local.py \
   --pass2-option notes=smoke_local
 ```
 
-## 3) Validar contrato e artefatos
+## 3) Validate contract and artifacts
 
 ```bash
 python scripts/validate_two_pass_outputs.py \
@@ -35,29 +35,29 @@ python scripts/validate_two_pass_outputs.py \
   --require-batch-summary
 ```
 
-## Artefatos relevantes
+## Relevant Artifacts
 
-- Metadata do Pass1: `metadata/page_{NNN}.meta.json`
-- Runmeta do Pass1: `metadata/page_{NNN}.meta.pass1.runmeta.json`
-- Saída de imagem do Pass2: `outputs/pass2/page_{NNN}_colorized.png`
-- Runmeta do Pass2: `outputs/pass2/page_{NNN}_colorized.runmeta.json`
-- Resumo de lote: `outputs/pass2/batch_summary.json`
+- Pass1 Metadata: `metadata/page_{NNN}.meta.json`
+- Pass1 Runmeta: `metadata/page_{NNN}.meta.pass1.runmeta.json`
+- Pass2 Image output: `outputs/pass2/page_{NNN}_colorized.png`
+- Pass2 Runmeta: `outputs/pass2/page_{NNN}_colorized.runmeta.json`
+- Batch summary: `outputs/pass2/batch_summary.json`
 
 
-## 4) Subir API local (opcional)
+## 4) Start local API (optional)
 
 ```bash
 python api/server.py --host 127.0.0.1 --port 8765
 ```
 
-## 5) Companion extension (opcional)
+## 5) Companion extension (optional)
 
-Ver guia:
+See guide:
 
 - `DOCS/API_EXTENSION.md`
 
 
-## 6) Executar API batch (opcional)
+## 6) Execute API batch (optional)
 
 ```bash
 curl -sS -X POST http://127.0.0.1:8765/v1/pass2/batch \

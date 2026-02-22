@@ -25,14 +25,14 @@ wheels/
 .cache
 htmlcov/
 
-# --- AMBIENTES VIRTUAIS ---
+# --- VIRTUAL ENVIRONMENTS ---
 .env
 .venv
 venv/
 ENV/
 
-# --- IA & MODELOS (CRÍTICO - ADICIONADO) ---
-# Bloqueia pesos de redes neurais e embeddings para não travar o Git
+# --- AI & MODELS (CRITICAL - ADDED) ---
+# Block neural network weights and embeddings to avoid hanging Git
 *.pt
 *.pth
 *.safetensors
@@ -42,11 +42,11 @@ ENV/
 *.tflite
 models/
 
-# --- DADOS ESPECÍFICOS DO PROJETO ---
-# Bloqueia a pasta que causou o problema
+# --- PROJECT-SPECIFIC DATA ---
+# Block the folder that caused issues
 data/embeddings/
 
-# Ignora entradas e saídas pesadas, mantém apenas estrutura se tiver .gitkeep
+# Ignore heavy inputs and outputs, keep only the structure if it has .gitkeep
 data/pages_bw/
 !data/pages_bw/.gitkeep
 output/
@@ -54,15 +54,15 @@ outputs/
 results/
 uploads/
 
-# --- METADADOS DE EXECUÇÃO ---
-# Ignora arquivos de log de execução, mantém configurações (.json puros)
+# --- EXECUTION METADATA ---
+# Ignore execution log files, keep pure configurations (.json)
 cache/
 chapter_cache/
 logs/
 *.log
 metadata/*.runmeta.json
 
-# --- LOGS EFÊMEROS (MANTIDO DO SEU ORIGINAL) ---
+# --- EPHEMERAL LOGS (KEPT FROM ORIGINAL) ---
 /*_result*.txt
 /*_report*.txt
 /err.txt
@@ -72,19 +72,19 @@ metadata/*.runmeta.json
 /fixed_res.txt
 /compose_err.txt
 
-# --- SISTEMA OPERACIONAL ---
+# --- OPERATING SYSTEM ---
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# --- AMBIENTES EXTERNOS (COMFYUI) ---
-# Bloqueia a instalação local do ComfyUI e seus modelos para não travar o Git
+# --- EXTERNAL ENVIRONMENTS (COMFYUI) ---
+# Block local ComfyUI installation and its models to avoid hanging Git
 ComfyUI_windows_portable/
 ComfyUI/
 temp_parse.py
 *.gguf
 
-# --- PASTAS DE TESTES DE CAPÍTULOS E PIPELINE ---
+# --- CHAPTER AND PIPELINE TEST FOLDERS ---
 Doukutsu_Ou_kara_Hajimeru_Rakuen_Life/
 manga_default/
 metadata/page_*.meta.json

@@ -62,13 +62,13 @@ def _save_mask_array(mask, output_mask_path: Path) -> bool:
         return False
 
 
-def _generate_mask_with_ported_pass1(page_image: str, output_mask: str, page_num: int) -> tuple[bool, str]:
+def _generate_mask_with_ported_pass1(page_image: str, output_mask: str, page_num: int) -> tuple[bool, str, list]:
     try:
         from core.pass1_analyzer import Pass1Analyzer
     except Exception as exc:
         reason = f"Pass1Analyzer unavailable ({exc})"
         logger.warning(reason)
-        return False, reason
+        return False, reason, []
 
     output_mask_path = Path(output_mask)
     output_mask_path.parent.mkdir(parents=True, exist_ok=True)
@@ -77,38 +77,39 @@ def _generate_mask_with_ported_pass1(page_image: str, output_mask: str, page_num
         analyzer = Pass1Analyzer()
         result = analyzer.analyze_page(page_image, page_num=page_num)
         text_mask = result.get("text_mask")
+        detections = result.get("detections", [])
         if _save_mask_array(text_mask, output_mask_path):
             logger.info("Pass1 analyzer generated text mask: %s", output_mask_path)
-            return True, ""
+            return True, "", detections
 
         reason = "Pass1 analyzer ran, but mask could not be serialized"
         logger.warning(reason)
-        return False, reason
+        return False, reason, detections
     except Exception as exc:
         reason = f"Pass1 analyzer execution failed ({exc})"
         logger.warning(reason)
-        return False, reason
+        return False, reason, []
 
 
-def generate_text_mask(page_image: str, output_mask: str, page_num: int) -> tuple[Path, str, str, Dict[str, bool]]:
+def generate_text_mask(page_image: str, output_mask: str, page_num: int) -> tuple[Path, str, str, Dict[str, bool], list]:
     output_mask_path = Path(output_mask)
     output_mask_path.parent.mkdir(parents=True, exist_ok=True)
 
     probe = probe_pass1_dependencies()
     deps = probe.availability
 
-    ok, reason = _generate_mask_with_ported_pass1(
+    ok, reason, detections = _generate_mask_with_ported_pass1(
         page_image=page_image,
         output_mask=output_mask,
         page_num=page_num,
     )
     if ok:
-        return output_mask_path, "ported_pass1", "", deps
+        return output_mask_path, "ported_pass1", "", deps, detections
 
     if DEFAULT_MASK_TEMPLATE.exists():
         shutil.copy2(DEFAULT_MASK_TEMPLATE, output_mask_path)
         logger.info("Using fallback template mask: %s", output_mask_path)
-        return output_mask_path, "template_fallback", reason, deps
+        return output_mask_path, "template_fallback", reason, deps, detections
 
     try:
         from PIL import Image
@@ -120,7 +121,7 @@ def generate_text_mask(page_image: str, output_mask: str, page_num: int) -> tupl
         logger.error("Failed to write blanket mask fallback: %s", exc)
         reason = reason or "template mask not found"
         
-    return output_mask_path, "empty_fallback", reason, deps
+    return output_mask_path, "empty_fallback", reason, deps, detections
 
 
 def run_pass1_with_report(
@@ -136,7 +137,7 @@ def run_pass1_with_report(
 ) -> Pass1RunReport:
     t0 = time.perf_counter()
 
-    mask_file, mode, fallback_reason, deps = generate_text_mask(
+    mask_file, mode, fallback_reason, deps, detections = generate_text_mask(
         page_image=page_image,
         output_mask=output_mask,
         page_num=page_num,
@@ -151,6 +152,7 @@ def run_pass1_with_report(
         "page_prompt": str(page_prompt),
         "style_reference": str(style_reference),
         "text_mask": str(mask_file),
+        "detections": detections,
     }
     pass1_runmeta_payload = {
         "mode": mode,
@@ -168,6 +170,7 @@ def run_pass1_with_report(
         page_prompt=page_prompt,
         style_reference=style_reference,
         text_mask=str(mask_file),
+        detections=detections,
     )
     runmeta_file = write_pass1_runmeta(
         metadata_path=metadata_file,

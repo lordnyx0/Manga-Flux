@@ -407,9 +407,10 @@ class Pass1Analyzer:
         yolo = self._get_yolo_detector()
         all_detections = yolo.detect(image)
         
-        # Filtra detecções de Texto (class_id=3)
+        # Filtra detecções de Texto (class_id=3) e Quadros (class_id=2)
         text_detections = [d for d in all_detections if d.class_id == DetectionClass.TEXT.value]
-        logger.debug(f"{len(text_detections)} balões de texto detectados")
+        frame_detections = [d for d in all_detections if d.class_id == 2] # DetectionClass.FRAME não existe no enum, então usamos int 2
+        logger.debug(f"{len(text_detections)} balões de texto e {len(frame_detections)} quadros detectados")
         
         # Agrupa Personagens (Body+Face) reutilizando detections
         character_groups = yolo.group_body_face_pairs(image, detections=all_detections)
@@ -490,7 +491,26 @@ class Pass1Analyzer:
                     class_name="text"
                 ))
 
-        logger.debug(f"{len(detections)} detecções finais (Chars+Text) para extração")
+        # Adiciona detecções de Quadro/Painel (Frame)
+        for frame_det in frame_detections:
+            x1, y1, x2, y2 = frame_det.bbox
+            
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(image.shape[1], x2), min(image.shape[0], y2)
+            
+            if x2 > x1 and y2 > y1:
+                frame_crop = image[y1:y2, x1:x2]
+                detections.append(Detection(
+                    bbox=(x1, y1, x2, y2),
+                    confidence=frame_det.confidence,
+                    crop=frame_crop,
+                    context_crop=frame_crop,
+                    page_num=page_num,
+                    class_id=2,
+                    class_name="frame"
+                ))
+
+        logger.debug(f"{len(detections)} detecções finais (Chars+Text+Frames) para extração")
         return detections
 
     def _extract_lineart(self, image: np.ndarray) -> np.ndarray:

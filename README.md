@@ -1,28 +1,28 @@
 # Manga-Flux: The First Specialist Manga Colorization Engine (v1.0)
 
-Manga-Flux é um pipeline avançado de colorização headless via API projetado com uma arquitetura **Two-Pass**:
+Manga-Flux is an advanced headless colorization pipeline via API designed with a **Two-Pass** architecture:
 
-- **Pass1 (Análise)**: Identificação e segmentação estrutural (Balões de texto, Rostos, Corpos, Quadros) usando IA de Visão (YOLO Manga109).
-- **Pass2 (Geração)**: Colorização de altíssima fidelidade utilizando a engine **FLUX.2-Klein**, guiado por metadados e injetando a Lineart diretamente no vetor de condicionamento textual (`ReferenceLatent`) para preservar 100% dos traços originais.
+- **Pass1 (Analysis)**: Identification and structural segmentation (Speech bubbles, Faces, Bodies, Panels) using Vision AI (YOLO Manga109).
+- **Pass2 (Generation)**: Ultra-high fidelity colorization using the **FLUX.2-Klein** engine, guided by metadata and directly injecting Lineart into the textual conditioning vector (`ReferenceLatent`) to 100% preserve original traits.
 
-> **Status Atual:** (Fevereiro 2026) O projeto alcançou um marco histórico. O Pass1 e o Pass2 estão integrados e operacionais. A arquitetura **ReferenceLatent** provou-se capaz de colorir perfeitamente preservando lineart sem a quebra do Denoise tradicional no Flux.
+> **Current Status:** (February 2026) The project has reached a historical milestone. Pass1 and Pass2 are integrated and operational. The **ReferenceLatent** architecture proved capable of perfect colorization while preserving lineart without breaking traditional Denoising in Flux.
 >
-> **Problemas Conhecidos (A Caminho da Fase C):** 
-> * **Cores Excessivas/Hiper-detalhamento:** A geração atual resulta em cores muito vibrantes e com detalhes não previstos.
-> * **Alucinações (Horror Vacui):** O modelo sofre para compor áreas de "vazio" (céu branco, fundos de balão mal lido), tendendo a desenhar objetos aleatórios onde deveria preservar o branco vazio. 
-> * **Resolução de Conflitos:** A Fase C (Desacoplada) está projetada para usar Composição Passiva e Inpaint Regional (guiado pelo Pass1) para corrigir e mascarar essas alucinações.
+> **Known Issues (Heading to Phase C):** 
+> * **Excessive Colors / Hyper-detailing:** The current generation results in highly vibrant colors with unpredicted details.
+> * **Hallucinations (Horror Vacui):** The model struggles to compose "empty" areas (white sky, poorly read bubble backgrounds), tending to draw random objects where it should preserve empty white. 
+> * **Conflict Resolution:** Phase C (Decoupled) is designed to use Passive Compositing and Regional Inpainting (guided by Pass1) to correct and mask these hallucinations.
 
-## 🌟 Recursos Principais
+## 🌟 Key Features
 
-- **FLUX Flow Matching Integration**: Usa técnicas de `EmptyLatent` + `ReferenceLatent` customizadas para saltar limitações de coloração img2img no FLUX.
-- **Smart Resolution Compositing**: Escalonamento bidirecional garante que seu mangá em HD não seja reduzido por limites de GPU, e que a colorização seja upscaled graciosamente para a montagem dos balões.
-- **Isolamento de Texto**: Balões de fala limpos via detecção cirúrgica.
+- **FLUX Flow Matching Integration**: Uses custom `EmptyLatent` + `ReferenceLatent` techniques to bypass img2img colorization limits in FLUX.
+- **Smart Resolution Compositing**: Bidirectional scaling ensures your HD manga is not downsized by GPU limits, and colorization is gracefully upscaled for bubble assembly.
+- **Text Isolation**: Clean speech bubbles via surgical detection.
 
-## 📦 Dependências Necessárias
+## 📦 Required Dependencies
 
-### Framework e Módulos Base
+### Base Framework and Modules
 - `Python 3.10+`
-- `onnxruntime-gpu` (ou `onnxruntime` para CPU) - Para inferência do YOLO no Pass1.
+- `onnxruntime-gpu` (or `onnxruntime` for CPU) - For YOLO inference in Pass1.
 - `fastapi`, `uvicorn`, `requests`, `numpy`, `Pillow`
 
 ```bash
@@ -30,32 +30,32 @@ pip install fastapi uvicorn requests numpy Pillow onnxruntime-gpu
 ```
 
 ### ComfyUI Engine Backend
-O Manga-Flux funciona interceptando uma instância local do **ComfyUI** via API. Você precisará:
-1. ComfyUI instalado localmente (https://github.com/comfyanonymous/ComfyUI)
+Manga-Flux works by intercepting a local instance of **ComfyUI** via API. You will need:
+1. ComfyUI installed locally (https://github.com/comfyanonymous/ComfyUI)
 2. Custom Node GGUF (`ComfyUI-GGUF`): `git clone https://github.com/city96/ComfyUI-GGUF`
 3. Custom Node ReferenceLatent (`ComfyUI_experiments`): `git clone https://github.com/comfyanonymous/ComfyUI_experiments`
 
-## 🧠 Modelos Utilizados
+## 🧠 Models Used
 
 ### YOLO / Pass1 (Manga Analysis)
 *   **Manga109 YOLO ONNX**: `data/models/manga109_yolo.onnx`
-    *   *Link*: [A ser adicionado]
+    *   *Link*: [To be added]
 
 ### ComfyUI / Pass2 (Diffusion Generation)
-*   **UNet (Base Model):** `flux-2-klein-9b-Q4_K_M.gguf` -> Coloque em `ComfyUI/models/unet/`
-    *   *Link*: [A ser adicionado]
-*   **LoRA (Style Injector):** `colorMangaKlein_9B.safetensors` -> Coloque em `ComfyUI/models/loras/`
-    *   *Link*: [A ser adicionado]
-*   **CLIP (Text Encoder):** `qwen_3_8b_fp4mixed.safetensors` -> Coloque em `ComfyUI/models/clip/`
-    *   *Link*: [A ser adicionado]
-*   **VAE:** `flux2-vae.safetensors` -> Coloque em `ComfyUI/models/vae/`
-    *   *Link*: [A ser adicionado]
+*   **UNet (Base Model):** `flux-2-klein-9b-Q4_K_M.gguf` -> Place in `ComfyUI/models/unet/`
+    *   *Link*: [To be added]
+*   **LoRA (Style Injector):** `colorMangaKlein_9B.safetensors` -> Place in `ComfyUI/models/loras/`
+    *   *Link*: [To be added]
+*   **CLIP (Text Encoder):** `qwen_3_8b_fp4mixed.safetensors` -> Place in `ComfyUI/models/clip/`
+    *   *Link*: [To be added]
+*   **VAE:** `flux2-vae.safetensors` -> Place in `ComfyUI/models/vae/`
+    *   *Link*: [To be added]
 
 ---
 
-## 🛠️ Executando o Pipeline
+## 🛠️ Running the Pipeline
 
-### Executar batch real local (Pass1->Pass2)
+### Run realistic local batch (Pass1->Pass2)
 
 ```bash
 python run_two_pass_batch_local.py \
@@ -68,20 +68,20 @@ python run_two_pass_batch_local.py \
   --engine flux
 ```
 
-## 📄 Contratos e Arquitetura
+## 📄 Contracts and Architecture
 
-- `metadata/README.md` (Contrato Pass1 -> Pass2)
-- `DOCS/PHASE_B_IMPLEMENTATION.md` (Arquitetura Geração FLUX Flow-Matching)
-- `DOCS/PHASE_C_CORRECTION.md` (Composição Passiva e Inpaint Ativo)
-- `core/utils/meta_validator.py` (Validador P2)
+- `metadata/README.md` (Pass1 -> Pass2 Contract)
+- `DOCS/PHASE_B_IMPLEMENTATION.md` (FLUX Flow-Matching Generation Architecture)
+- `DOCS/PHASE_C_CORRECTION.md` (Passive Compositing and Active Inpainting)
+- `core/utils/meta_validator.py` (P2 Validator)
 
-## ▶️ Operação 
+## ▶️ Operation 
 
-- `DOCS/OPERATION.md` (Guia operacional com comandos batch)
+- `DOCS/OPERATION.md` (Operation guide with batch commands)
 
-## 🔌 API e Extensão Chrome
+## 🔌 API and Chrome Extension
 
-- API local: `api/server.py`
+- Local API: `api/server.py`
 - Companion extension: `extension/manga-flux-extension`
-- Guia Completo: `DOCS/API_EXTENSION.md`
-- Análise de Adaptação FAISS: `DOCS/FAISS_ADAPTACAO_MANGA_FLUX.md`
+- Full Guide: `DOCS/API_EXTENSION.md`
+- FAISS Adaptation Analysis: `DOCS/FAISS_ADAPTACAO_MANGA_FLUX.md`

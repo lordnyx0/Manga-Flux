@@ -1,42 +1,42 @@
-# Análise e adaptação do fluxo `/manga` (FAISS) para o Manga-Flux atual
+# Analysis and adaptation of the `/manga` (FAISS) flow for the current Manga-Flux
 
-## Contexto
+## Context
 
-No projeto `/manga`, o FAISS costuma ser usado para recuperar embeddings de referência (identidade/personagem/paleta) em fluxos de continuidade entre páginas/capítulos.
+In the `/manga` project, FAISS is usually used to retrieve reference embeddings (identity/character/palette) in continuity flows between pages/chapters.
 
-No estado atual do Manga-Flux:
+In the current state of Manga-Flux:
 
-- o pipeline Two-Pass já está funcional (Pass1 + Pass2)
-- já existe diretório de embeddings (`data/embeddings`)
-- a API local agora suporta ingestão de páginas do navegador e execução de capítulo completo
+- the Two-Pass pipeline is already functional (Pass1 + Pass2)
+- an embeddings directory already exists (`data/embeddings`)
+- the local API now supports page ingestion from the browser and full chapter execution
 
-## Adaptação implementada nesta etapa
+## Adaptation implemented in this stage
 
-- Endpoint novo: `POST /v1/pipeline/run_chapter`
-  - recebe `manga_id`, `chapter_id`, `style_reference_url`, `page_urls[]`
-  - baixa imagens da web
-  - executa Pass1 + Pass2 por página
-  - grava em: `output/<manga_id>/chapters/<chapter_id>/...`
-- Extensão atualizada para:
-  - capturar URLs de imagens da aba atual
-  - enviar lote via API para processamento de capítulo
+- New endpoint: `POST /v1/pipeline/run_chapter`
+  - receives `manga_id`, `chapter_id`, `style_reference_url`, `page_urls[]`
+  - downloads web images
+  - runs Pass1 + Pass2 per page
+  - saves to: `output/<manga_id>/chapters/<chapter_id>/...`
+- Extension updated to:
+  - capture image URLs from the current tab
+  - send batch via API for chapter processing
 
-## Como isso aproxima do fluxo `/manga`
+## How this approaches the `/manga` flow
 
-- **Semântica de capítulo**: output estruturado por manga/capítulo
-- **Ingestão web-first**: extensão coleta imagens do browser para pipeline
-- **Base para recuperação vetorial**: artefatos por capítulo ficam organizados para futura indexação/retrieval
+- **Chapter semantics**: structured output by manga/chapter
+- **Web-first ingestion**: extension collects images from the browser for the pipeline
+- **Vector retrieval foundation**: artifacts per chapter are organized for future indexing/retrieval
 
-## Próxima adaptação FAISS (proposta objetiva)
+## Next FAISS adaptation (objective proposal)
 
-1. Criar módulo `core/identity/faiss_service.py` com fallback numpy quando FAISS não estiver disponível.
-2. Gerar embedding por página/personagem no fim do Pass1 e persistir no capítulo.
-3. Expor endpoints:
+1. Create `core/identity/faiss_service.py` module with numpy fallback when FAISS is unavailable.
+2. Generate embedding per page/character at the end of Pass1 and persist in the chapter.
+3. Expose endpoints:
    - `POST /v1/faiss/index_chapter`
    - `POST /v1/faiss/search`
-4. Integrar resultado da busca no `options` do Pass2 para reforçar consistência visual entre páginas.
+4. Integrate search result into Pass2 `options` to reinforce visual consistency between pages.
 
-## Risco e mitigação
+## Risk and mitigation
 
-- **Risco**: FAISS não disponível no ambiente.
-- **Mitigação**: fallback em memória com distância coseno (numpy), mantendo contrato da API.
+- **Risk**: FAISS unavailable in the environment.
+- **Mitigation**: memory fallback with cosine distance (numpy), maintaining API contract.

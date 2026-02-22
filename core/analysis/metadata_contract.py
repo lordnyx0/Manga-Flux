@@ -27,6 +27,7 @@ if PYDANTIC_AVAILABLE:
         page_prompt: str = Field(min_length=1)
         style_reference: str = Field(min_length=1)
         text_mask: str = Field(min_length=1)
+        detections: list[dict] = Field(default_factory=list)
 
         @classmethod
         def load(cls, meta_path: str | Path) -> "Pass1Metadata":
@@ -63,6 +64,11 @@ else:
         page_prompt: str
         style_reference: str
         text_mask: str
+        detections: list[dict] = None
+
+        def __post_init__(self):
+            if self.detections is None:
+                self.detections = []
 
         @classmethod
         def load(cls, meta_path: str | Path) -> "Pass1Metadata":
@@ -86,6 +92,7 @@ else:
                 page_prompt=str(payload["page_prompt"]),
                 style_reference=str(payload["style_reference"]),
                 text_mask=str(payload["text_mask"]),
+                detections=payload.get("detections", []),
             )
 
         def model_dump(self) -> dict:

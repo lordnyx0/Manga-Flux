@@ -15,6 +15,7 @@ def write_pass1_metadata(
     page_prompt: str,
     style_reference: str | Path,
     text_mask: str | Path,
+    detections: list[dict] | None = None,
 ) -> Path:
     """Write metadata/page_{NNN}.meta.json in the Pass1->Pass2 contract."""
     output_dir = Path(output_dir)
@@ -27,6 +28,7 @@ def write_pass1_metadata(
         page_prompt=str(page_prompt),
         style_reference=str(style_reference),
         text_mask=str(text_mask),
+        detections=detections or [],
     )
 
     file_path = output_dir / f"page_{int(page_num):03d}.meta.json"

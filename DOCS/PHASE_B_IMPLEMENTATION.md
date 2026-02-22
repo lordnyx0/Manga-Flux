@@ -1,10 +1,10 @@
-# Fase B: Implementação Real do Pass2 (Manga-Flux)
+# Phase B: Real Pass2 Implementation (Manga-Flux)
 
-Este documento estabelece o escopo, arquitetura e os checklists da **Fase B** do projeto: a substituição do mock/dummy do Pass2 pelo uso real dos modelos de difusão (já presentes no diretório `/models`).
+This document establishes the scope, architecture, and checklists for **Phase B** of the project: the replacement of the Pass2 mock/dummy with the real use of diffusion models (already present in the `/models` directory).
 
-## 1. Visão Arquitetural e Fluxo (Pass1 -> Pass2 -> API -> Extension)
+## 1. Architectural Vision and Flow (Pass1 -> Pass2 -> API -> Extension)
 
-Para garantir que a integração real flua perfeitamente, o fluxo entre os componentes foi unificado:
+To ensure real integration flows perfectly, the flow between components has been unified:
 
 ```mermaid
 sequenceDiagram
@@ -16,86 +16,86 @@ sequenceDiagram
     participant P2E as Diffusion Engine (Flux)
 
     Ext->>API: POST /v1/pipeline/run_chapter (Images/URLs)
-    API->>P1: Inicia processamento de Análise
-    P1->>P1: Extrai Máscaras, Segmentações, YOLO
-    P1->>FAISS: Busca referência semântica (Opcional)
-    FAISS-->>P1: Retorna embeddings/estilos
-    P1-->>API: Salva metadata JSON + Masks no disco
+    API->>P1: Starts Analysis processing
+    P1->>P1: Extracts Masks, Segmentations, YOLO
+    P1->>FAISS: Fetches semantic reference (Optional)
+    FAISS-->>P1: Returns embeddings/styles
+    P1-->>API: Saves JSON metadata + Masks to disk
     
-    API->>P2O: Inicia Pass2
+    API->>P2O: Starts Pass2
     P2O->>P2O: PromptBuilder / MaskBinder / StyleBinder
-    P2O->>P2E: Envia Payload Formatado para Inferência
-    Note over P2E: Inference c/ VRAM Offload (Flux)
-    P2E-->>P2O: Retorna tensores gerados
-    P2O-->>API: Salva Imagens Colorizadas + Runmeta no disco
-    API-->>Ext: Retorna status/Caminhos das imagens
+    P2O->>P2E: Sends Formatted Payload for Inference
+    Note over P2E: Inference w/ VRAM Offload (Flux)
+    P2E-->>P2O: Returns generated tensors
+    P2O-->>API: Saves Colorized Images + Runmeta to disk
+    API-->>Ext: Returns status/Image Paths
 ```
 
-### Detalhamento do Fluxo
-1. **Extension**: A extensão atua como o veículo de orquestração do leitor. Suas duas funções principais são:
-    - **Capturar a Página Alvo:** Captura ativamente a página de mangá que o usuário está lendo no site alvo.
-    - **Capturar a Referência:** Fornecer e anexar a imagem de "Style Reference", que contém os personagens e o estilo de colorização que guiarão a geração. Ela empacota essas imagens/URLs e dispara as chamadas em lote (`POST /v1/pipeline/run_chapter` ou `batch`) para a API local.
-2. **API**: Valida a requisição, as credenciais e encaminha os dados de imagem/estado para a camada de processamento de pipelines.
-3. **Pass1**: Analisa as imagens brutas usando o YOLO e algoritmos de segmentação para achar balões e personagens, gerando as matrizes de contexto (máscaras e z-buffer) na forma de contratos `meta.json`.
-4. **FAISS Retrieval (Pré-Geração)**: A busca semântica acontece *após* a extração do Pass1, mas *antes* do Pass2. As referências são adicionadas ao `meta.json`.
-5. **Pass2 Orchestrator**: Para evitar que a Engine colapse fazendo o binding do metadata junto com a inferência, a arquitetura foi desmembrada em camadas:
-    - **PromptBuilder**: Lê o JSON e monta os condicionamentos textuais (ex: descreve que no painel 1 há o "Personagem X", formatando a prompt que guiará o Flux).
-    - **MaskBinder**: Determina exatamente para que as máscaras servimentão na estratégia de geração (inicialmente: preservação de balões/texto para evitar que a rede mexa nessa área).
-    - **StyleBinder**: Prepara os embeddings ou imagens de estilo (IP-Adapter/referência). **Nota sobre Viabilidade no Flux:** Na Fase B inicial, a referência de estilo atua de forma *global* (color palette e traços gerais do personagem injetados via IP-Adapter/Image Prompt). Um "link" espacial perfeito (personagem X da ref -> bounding box Y do mangá) via difusão pura exige arquiteturas multi-adapter complexas. Inicialmente, confiaremos no `PromptBuilder` para o posicionamento de texto e na referência de estilo global para o look, estabilizando isso antes de tentar referências contextuais por máscara regional.
-6. **DiffusionEngine (Agnóstica / Plug & Play)**: O papel da Engine (atualmente `FluxEngine`) é puramente de inferência. Ela recebe o payload padrão criado pelo Orchestrator e aplica técnicas de offload e inferência. **A substituição do motor:** Graças a essa barreira arquitetural imposta pelo Orchestrator, se no futuro o modelo mudar (ex: adoção do *Qwen 3* ou outra SOTA de difusão), apenas o componente final (`QwenEngine.py`, etc) precisa ser escrito, absorvendo as variáveis do Orchestrator, sem quebrar os processos do Pass1, API, JSON ou Extension.
+### Flow Breakdown
+1. **Extension**: The extension acts as the reader's orchestration vehicle. Its two main functions are:
+    - **Capture Target Page:** Actively captures the manga page the user is reading on the target site.
+    - **Capture Reference:** Provide and append the "Style Reference" image, containing characters and colorization style to guide the generation. It packages these images/URLs and fires batch calls (`POST /v1/pipeline/run_chapter` or `batch`) to the local API.
+2. **API**: Validates the request, credentials, and forwards image/state data to the pipeline processing layer.
+3. **Pass1**: Analyzes raw images using YOLO and segmentation algorithms to find speech bubbles and characters, generating context matrices (masks and z-buffer) in the form of `meta.json` contracts.
+4. **FAISS Retrieval (Pre-Generation)**: Semantic search happens *after* Pass1 extraction, but *before* Pass2. References are added to `meta.json`.
+5. **Pass2 Orchestrator**: To prevent the Engine from collapsing by binding metadata alongside inference, the architecture is split into layers:
+    - **PromptBuilder**: Reads the JSON and assembles textual conditioning (e.g., describes that panel 1 features "Character X", formatting the prompt guiding Flux).
+    - **MaskBinder**: Determines exactly what masks will serve for in the generation strategy (initially: preserving speech bubbles/text to prevent the network from altering this area).
+    - **StyleBinder**: Prepares style images or embeddings (IP-Adapter/reference). **Note on Flux Feasibility:** In initial Phase B, the style reference acts *globally* (color palette and general character traits injected via IP-Adapter/Image Prompt). A perfect spatial "link" (character X from ref -> bounding box Y from manga) via pure diffusion demands complex multi-adapter architectures. Initially, we will rely on `PromptBuilder` for text placement and the global style reference for the look, stabilizing this before attempting contextual references through regional masks.
+6. **DiffusionEngine (Agnostic / Plug & Play)**: The Engine's role (currently `FluxEngine`) is purely inference. It receives the standard payload created by the Orchestrator and applies offload and inference techniques. **Engine Replacement:** Thanks to this architectural barrier imposed by the Orchestrator, if the model changes in the future (e.g., adoption of *Qwen 3* or another SOTA diffusion), only the final component (`QwenEngine.py`, etc) needs to be written, absorbing the Orchestrator's variables, without breaking Pass1 paths, API, JSON, or Extension.
 
-## 2. Plano de Implementação da Fase B (Checklist)
+## 2. Phase B Implementation Plan (Checklist)
 
-Este checklist será **constantemente atualizado** durante a integração do Pass2 real.
+This checklist will be **constantly updated** during the integration of real Pass2.
 
-### 2.1. Preparação da Infraestrutura de Inferência
-- [x] Mapear todos os modelos necessários de `/models` (Base Model, VAE, ControlNet, LoRAs).
-- [x] Configurar os paths absolutos/relativos corretos no `core/config.py` ou `constants.py` apontando para `/models`.
-- [ ] Garantir que dependências de inferência profunda (`diffusers`, `transformers`, `torch` com CUDA, etc.) existam e funcionem no env local.
+### 2.1. Inference Infrastructure Preparation
+- [x] Map all required models from `/models` (Base Model, VAE, ControlNet, LoRAs).
+- [x] Set correct absolute/relative paths in `core/config.py` or `constants.py` pointing to `/models`.
+- [ ] Ensure deep inference dependencies (`diffusers`, `transformers`, `torch` with CUDA, etc.) exist and work in local env.
 
-### 2.2. Estratégia Inicial e Validação da API do Modelo
-Antes de projetar o pipeline completo, é crucial confirmar o comportamento do modelo *Flux* com a biblioteca Diffusers.
-- [x] Confirmar pipeline primário: Testar o carregamento básico usando `DiffusionPipeline.from_pretrained(...)`.
-- [x] **Teste de Sanidade de API:** Escrever um script que valide o Flux com `enable_model_cpu_offload()` rodando um `image = pipe(prompt, image=img, strength=1.0)` básico sem OOM.
-- [x] **Estratégia de Geração (Fase B Inicial):** Implementar **Img2Img Full-Frame com preservação de máscara de texto**. Não usar Inpainting regional complexo nesta fase inicial.
+### 2.2. Initial Strategy and Model API Validation
+Before engineering the full pipeline, it is crucial to confirm the *Flux* model behavior with the Diffusers library.
+- [x] Confirm primary pipeline: Test basic loading using `DiffusionPipeline.from_pretrained(...)`.
+- [x] **API Sanity Test:** Write an `enable_model_cpu_offload()` script testing Flux running a basic `image = pipe(prompt, image=img, strength=1.0)` without OOM.
+- [x] **Generation Strategy (Initial Phase B):** Implement **Full-Frame Img2Img preserving text mask**. Do not use complex regional inpainting initially.
 
-> **💡 Alerta de Viabilidade (GGUF vs Diffusers):**
-> Durante os testes de sanidade, detectou-se que a biblioteca `diffusers` padrão **não suporta carregamento nativo de pesos GGUF** do Flux (`flux-2-klein-9b-Q4_K_M.gguf`). A HuggingFace exige formato `safetensors` ou diretórios HuggingFace Hub para carregar nativamente.
-> **Impacto no Plano Resolvido (Opção B Escolhida):** Como a versão GGUF quantizada reduz a necessidade de offload extremo mas não é suportada nativamente em Python, **adotamos a Opção B (ComfyUI Headless)**. A `FluxEngine` (no Manga-Flux) atuará como um cliente REST que monta um workflow JSON e o despacha para uma instância do ComfyUI rodando localmente em background.
+> **💡 Feasibility Alert (GGUF vs Diffusers):**
+> During sanity tests, it was detected that standard `diffusers` library **does not support native GGUF weight loading** for Flux (`flux-2-klein-9b-Q4_K_M.gguf`). HuggingFace requires `safetensors` format or HuggingFace Hub directories to load natively.
+> **Impact on the Resolved Plan (Option B Chosen):** Since the quantized GGUF version reduces the need for extreme offload but isn't natively supported in Python, **we adopted Option B (ComfyUI Headless)**. The `FluxEngine` (in Manga-Flux) acts as a REST client compiling a JSON workflow to be dispatched to a ComfyUI instance running locally in the background.
 > 
-> **🔤 Nota sobre Codificador de Texto (Flux.2 Klein + Qwen3):**
-> A série **Flux.2 Klein** abandonou a estrutura bimodal original do Flux.1 (T5-XXL + CLIP-L) e utiliza estritamente o modelo de linguagem **Qwen 3** para Text Encoding. O nó `CLIPLoader` dentro da Payload JSON deve sempre apontar para `qwen_3_8b_fp4mixed.safetensors`.
+> **🔤 Note on Text Encoder (Flux.2 Klein + Qwen3):**
+> The **Flux.2 Klein** series abandoned the original Flux.1 dual structure (T5-XXL + CLIP-L) and strictly uses the **Qwen 3** language model for Text Encoding. The `CLIPLoader` node within the JSON Payload must always point to `qwen_3_8b_fp4mixed.safetensors`.
 
-### 2.3. Implementação da Arquitetura do Pass2 (Orchestrator e Engine ComfyUI)
-- [x] Implementar a separação em camadas (`Pass2 Orchestrator` -> `PromptBuilder`, `MaskBinder`, `StyleBinder`, `FluxEngine` via REST).
-- [x] Implementar cliente em `core/generation/engines/flux_engine.py` para converter o Payload Agnóstico num "ComfyUI API Workflow JSON".
-- [x] Definir o papel claro do **MaskBinder**: As máscaras na Fase B inicial serão usadas primariamente para **preservar os textos/balões originais** e evitar over-generation nessas áreas durante o Img2Img Full-Frame.
-- [x] **Integração Node ComfyUI:** Garantir que o Workflow JSON submetido possua compatibilidade com os custom nodes para GGUF (ex: `UnetLoaderGGUF`).
-- [x] Executar primeira rota visual de ponta a ponta (Pass1 -> JSON -> Orchestrator -> ComfyUI JSON Payload -> Geração -> Retorno).
+### 2.3. Pass2 Architecture Implementation (Orchestrator and ComfyUI Engine)
+- [x] Implement layer separation (`Pass2 Orchestrator` -> `PromptBuilder`, `MaskBinder`, `StyleBinder`, REST `FluxEngine`).
+- [x] Implement client in `core/generation/engines/flux_engine.py` converting the Agnostic Payload into a "ComfyUI API Workflow JSON".
+- [x] Define a clear role for **MaskBinder**: Masks in Phase B will primarily be used to **preserve original texts/bubbles** avoiding over-generation in areas during Full-Frame Img2Img.
+- [x] **ComfyUI Node Integration:** Ensure submitted Workflow JSON has compatibility for GGUF custom nodes (e.g., `UnetLoaderGGUF`).
+- [x] Execute first end-to-end visual route (Pass1 -> JSON -> Orchestrator -> ComfyUI JSON Payload -> Generation -> Return).
 
-> **⚠️ Alerta Técnico (Descobertas Sobre Colorização Img2Img no FLUX):**
-> Durante os testes de integração do modelo `FLUX.2-Klein` em conjunto com o estilo LoRA `colorMangaKlein`, deparamo-nos com limitações profundas do comportamento Flow Matching da base FLUX usando `img2img` tradicional (VAEEncode -> KSampler):
-> 1. **Sensibilidade do Denoise:** No `KSampler` padrão, se o denoise for `> 0.6`, o FLUX alucina e começa a gerar textos e balões em alienígena, ignorando completamente o traço original (destruição do contexto). Se o denoise for `< 0.5`, ele respeita o contexto "demais", não colorindo absolutamente nada e devolvendo uma imagem em preto e branco.
-> 2. **Incompatibilidade EPS:** Tentar colocar o node `ModelSamplingDiscrete` em formato padrão `eps` causa a quebra matemática completa dos tensores latentes do FLUX (gerando ruídos de TV), pois sua base não mapeia ruído convencional, mas sim um Flow Matching (Retificadores de Fluxo). A única curadora manual de amostragem possível no base nodeset é passar o modelo nativamente para o KSampler para ele extrair as configurações do checkpoint.
-> 3. **A Solução ReferenceLatent (UUID `4929e576-...`):** Ao destrinchar os GroupNodes que funcionavam no ComfyUI, diagnosticamos que eles ocultavam o Custom Node `ReferenceLatent` (da extensão `ComfyUI_experiments`). Modelos Flow Matching dependem de iniciar o processo a partir de um Empty Latent para calcular a trajetória de ruído perfeitamente. Em vez de passar a imagem P&B por um `VAEEncode` direto para o `KSampler` (onde o denoise brigaria com o traço), a imagem é encodada e injetada **dentro dos Conditionings (Positive/Negative)** através do `ReferenceLatent`. 
+> **⚠️ Technical Alert (Findings on Img2Img Colorization in FLUX):**
+> During integration tests with the `FLUX.2-Klein` model and the `colorMangaKlein` LoRA style, we faced profound limitations due to FLUX's Flow Matching behavior when using traditional `img2img` (VAEEncode -> KSampler):
+> 1. **Denoise Sensitivity:** In a standard `KSampler`, if denoise is `> 0.6`, FLUX hallucinates replacing text and shapes ignoring lines (context destruction). If denoise is `< 0.5`, it respects it "too much", returning an uncolored black and white image.
+> 2. **EPS Incompatibility:** Setting `ModelSamplingDiscrete` to `eps` standard breaks FLUX latent tensors entirely (yielding TV noise), since its foundations map Flow Matching (Rectified Flows), not standard noise.
+> 3. **The ReferenceLatent Solution (UUID `4929e576-...`):** Investigating ComfyUI GroupNodes, we found they were hiding the Custom Node `ReferenceLatent` (from the `ComfyUI_experiments` extension). Flow Matching models must start from an Empty Latent to compute trajectory properly. Instead of pushing B&W into a direct `VAEEncode` to `KSampler`, the lineart is encoded and injected **inside Conditionings (Positive/Negative)** via `ReferenceLatent`. 
 > 
-> **Resolução Aplicada:**
-> A nossa `FluxEngine` foi totalmente refatorada para gerar a Payload de API com a arquitetura `ReferenceLatent`. O *KSampler* recebe um `EmptyFlux2LatentImage` e o Denoise é mantido alto. A imagem "fantasma" é guiada puramente de forma semântica pelo Conditioning e pelo peso do LoRA, curando o problema de destruição do mangá original sem alucinar.
-### 2.4. Integração com Bateria de Testes / Batch
-- [x] Atualizar script `run_pass2_local.py` permitindo chave `--engine flux` acessar adequadamente o pipeline real.
-- [x] Ajustar e rodar o pipeline através de `run_two_pass_batch_local.py` gerando resultados reais (batch de 3 a 5 páginas).
-- [x] Observar consistência visual nas imagens renderizadas usando sementes estáticas (`--pass2-seed-offset`).
-- [x] Revisar tempo de inferência (`duration_ms`) e garantir observabilidade.
+> **Applied Resolution:**
+> Our `FluxEngine` was entirely refactored to generate API Payloads matching the `ReferenceLatent` architecture. The *KSampler* receives an `EmptyFlux2LatentImage` keeping a high Denoise. The "ghost" structural image is guided purely semiotically through Conditioning and LoRA weight, curing original lineart destruction without hallucinations.
+### 2.4. Batch / Testing Integration
+- [x] Update `run_pass2_local.py` script allowing `--engine flux` flag to properly hit the actual pipeline.
+- [x] Adjust and run the pipeline through `run_two_pass_batch_local.py` generating real results (3 to 5-page batch).
+- [x] Exert visual consistency on rendered outputs using static seeds (`--pass2-seed-offset`).
+- [x] Verify inference time logging (`duration_ms`) and ensure observability.
 
-### 2.5. Padronização Formal do Runmeta JSON
-O artefato `runmeta.json` deve possuir uma estrutura de metadados exata para não perder a rastreabilidade:
-- [x] Implementar validador ou builder formal, garantindo as chaves (Aplicado via `pipeline.py`).
+### 2.5. Formal Runmeta JSON Standardization
+The `runmeta.json` artifact must have an exact structure to maintain traceability:
+- [x] Implement formal validator or builder, guaranteeing keys (Applied via `pipeline.py`).
 
-### 2.6. Refinamento e Funcionalidades Avançadas
-- [x] Gerenciamento/Logging de erros se a API do Pass2 falhar por falta de modelo ou OOM (Blocks de Try/Catch na engine).
-- [~] Implementar Integração FAISS apenas na fase de extração (pós Pass1). -> *Pausado para futura validação de Arquitetura.*
-- [~] Retornar metadados ricos para a Extensão Chrome sobre os parâmetros que a difusão real interpretou. -> *Delegado para Fase de Conexão API/Chrome.*
+### 2.6. Advanced Refining Features
+- [x] Error Logging/Handling if Pass2 API fails due to missing model or OOM (Try/Catch in the engine).
+- [~] Implement FAISS Integration strictly during extraction phase (post Pass1). -> *Paused for future architecture validation.*
+- [~] Return rich metadata to Chrome Extension regarding interpreted diffusion parameters. -> *Delegated to Chrome/API Connection Phase.*
 
 ---
 
-> **Nota:** Use os scripts em `scripts/` (como `validate_two_pass_outputs.py`) após cada milestone visual para garantir que não corrompemos o contrato do meta-json com a entrada do motor de IA.
+> **Note:** Use the scripts in `scripts/` (such as `validate_two_pass_outputs.py`) after each visual milestone to ensure the meta-json contract is not corrupted alongside AI engine inputs.
