@@ -65,14 +65,19 @@ python run_two_pass_batch_local.py \
   --masks-output outputs/batch_test_run/masks \
   --pass2-output outputs/batch_test_run \
   --chapter-id chapter_test \
-  --engine flux
+  --engine flux \
+  --phase-c-structure
 ```
+
+When `--phase-c-structure` is enabled, each page emits `page_XXX_phase_c_structure.json`, `page_XXX_phase_c_inpaint_mask.png`, and `page_XXX_phase_c_overlay.png` with panel-level structural verdicts and inpaint routing/QA artifacts for Phase C correction.
+The report includes lineart overlap metrics (`line_iou`, `line_dice`) and regional anomaly routing (`acceptable`, `micro_inpaint`, `critical_inpaint`).
 
 ## 📄 Contracts and Architecture
 
 - `metadata/README.md` (Pass1 -> Pass2 Contract)
 - `docs/PHASE_B_IMPLEMENTATION.md` (FLUX Flow-Matching Generation Architecture)
 - `docs/PHASE_C_CORRECTION.md` (Passive Compositing and Active Inpainting)
+- `DOCS/PHASE_C_CHECKLIST.md` (Implementation checklist and next milestones)
 - `core/utils/meta_validator.py` (P2 Validator)
 
 ## ▶️ Operation 
