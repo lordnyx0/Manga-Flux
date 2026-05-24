@@ -20,6 +20,7 @@ from .palette_manager import (
     ColorRegion,
     generate_prompt_from_palette
 )
+from .faiss_service import FaissService
 
 __all__ = [
     'HybridIdentitySystem',
@@ -29,5 +30,6 @@ __all__ = [
     'PaletteManager',
     'CharacterPalette',
     'ColorRegion',
-    'generate_prompt_from_palette'
+    'generate_prompt_from_palette',
+    'FaissService'
 ]

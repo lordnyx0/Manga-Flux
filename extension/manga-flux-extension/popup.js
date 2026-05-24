@@ -9,6 +9,7 @@ const chapterIdInput = $('chapterId');
 const styleReferenceUrlInput = $('styleReferenceUrl');
 const styleReferenceFileInput = $('styleReferenceFile');
 const styleReferenceHintEl = $('styleReferenceHint');
+const allowNoStyleInput = $('allowNoStyle');
 const pageImagesHintEl = $('pageImagesHint');
 const engineInput = $('engine');
 const strengthInput = $('strength');
@@ -385,6 +386,7 @@ async function saveSettings() {
     mangaId: mangaIdInput.value.trim(),
     chapterId: chapterIdInput.value.trim(),
     styleReferenceUrl: styleReferenceUrlInput.value.trim(),
+    allowNoStyle: allowNoStyleInput.checked,
     engine: engineInput.value,
     strength: strengthInput.value,
     outputRoot: outputRootInput.value.trim(),
@@ -401,7 +403,7 @@ async function saveSettings() {
 
 async function loadSettings() {
   const keys = [
-    'apiBase', 'apiToken', 'theme', 'mangaId', 'chapterId', 'styleReferenceUrl',
+    'apiBase', 'apiToken', 'theme', 'mangaId', 'chapterId', 'styleReferenceUrl', 'allowNoStyle',
     'engine', 'strength', 'outputRoot', 'metaPath', 'outputDir', 'metadataDir',
     'batchOutputDir', 'expectedPages', HISTORY_KEY, IMAGES_KEY, 'chapterPageUrls', 'captureSourceUrl',
     'styleReferenceUpload',
@@ -415,6 +417,7 @@ async function loadSettings() {
   if (data.mangaId) mangaIdInput.value = data.mangaId;
   if (data.chapterId) chapterIdInput.value = data.chapterId;
   if (data.styleReferenceUrl) styleReferenceUrlInput.value = data.styleReferenceUrl;
+  allowNoStyleInput.checked = !!data.allowNoStyle;
   if (data.engine) engineInput.value = data.engine;
   if (data.strength !== undefined) { strengthInput.value = data.strength; strengthDisplay.textContent = Number(data.strength).toFixed(2); }
   if (data.outputRoot) outputRootInput.value = data.outputRoot;
@@ -443,7 +446,7 @@ async function loadSettings() {
 
 [
   apiBaseInput, apiTokenInput, mangaIdInput, chapterIdInput, styleReferenceUrlInput,
-  engineInput, strengthInput, outputRootInput, metaPathInput, outputDirInput,
+  allowNoStyleInput, engineInput, strengthInput, outputRootInput, metaPathInput, outputDirInput,
   metadataDirInput, batchOutputDirInput, expectedPagesInput,
 ].forEach((el) => el.addEventListener('change', saveSettings));
 
@@ -607,6 +610,7 @@ runChapterBtn.addEventListener('click', async () => {
       chapter_id: chapterIdInput.value.trim(),
       engine: engineInput.value,
       strength: Number(strengthInput.value || '1.0'),
+      allow_no_style: allowNoStyleInput.checked,
       output_root: outputRootInput.value.trim(),
       options: {},
       page_uploads,

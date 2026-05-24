@@ -18,6 +18,10 @@ Directly comparing B&W versus Color — or even normalized pixels — often fail
 *   **Edge Detector (Lineart):** We extract a binary edge map (lineart) from the generated image and compare it with the original image lineart (Pass1).
 *   **Edge-to-Edge Metrics:** We calculate the **Dice Coefficient** or **IoU (Intersection over Union)** on the line mask arrays.
 *   **Role:** Accurately detects the appearance of **new objects** (structural hallucinations, accessories) and **deeply distorted shapes**, completely ignoring shading/fill brightness fluctuations.
+*   **Edge Matching Discrepancy Findings:** Real test validations showed that even when lineart is pixel-for-pixel visually identical, the Dice Coefficient rarely exceeds `0.70` due to:
+    - *Lost Lines (Blue):* Hatched areas or dark pre-filled regions in the B&W page are smoothed by the bilateral filter and morph operations in the colored edge detector.
+    - *Added Lines (Red):* Strong cell-shading transitions and ambient lighting borders in the colored page are picked up as "new edges" by Canny, even though they represent artistic lighting, not lineart hallucinations.
+    - *Dice Score Threshold Recommendation:* A score of `~0.60` to `0.65` indicates highly successful lineart locking under rich shading. A static `0.75` threshold is often too strict and may trigger false alerts for complex rendering styles.
 
 **Layer 2: Analytical Heatmap — Auxiliary Check**
 *   **SSIM Map (Regional SSIM) and Diff Mask:** SSIM acts as a similarity *Heatmap* rather than a global guard by sliding an 11x11 pixel window evaluation after grayscale conversion. Together with an Absolute Difference Map, this maps out the exact contour of the anomaly spotted in Layer 1.

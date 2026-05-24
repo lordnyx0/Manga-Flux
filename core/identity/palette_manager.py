@@ -558,74 +558,124 @@ temporal para evitar flickering de cores entre páginas.
 def generate_prompt_from_palette(palette: CharacterPalette) -> str:
     """
     Gera texto descritivo a partir da paleta.
-    
+
+    Inclui cores dominantes E cores de destaque (alta saturação) mesmo que
+    não sejam as mais freqüentes — amarelos/dourados em roupas pretas, etc.
+
     Args:
         palette: Paleta do personagem
-        
+
     Returns:
         String descritiva das cores
     """
     descriptions = []
-    
-    color_map = {
+
+    region_labels = {
         'hair': 'hair',
         'skin': 'skin',
         'eyes': 'eyes',
         'clothes_primary': 'clothes',
-        'clothes_secondary': 'clothes details'
+        'clothes_secondary': 'clothes details',
+        'accessories': 'accessories',
     }
-    
-    for region, name in color_map.items():
-        if region in palette.regions:
-            color = palette.regions[region].dominant_color
-            # Converte RGB para nome aproximado
-            color_name = _rgb_to_color_name(color)
-            descriptions.append(f"{color_name} {name}")
-    
+
+    for region, name in region_labels.items():
+        if region not in palette.regions:
+            continue
+        color_region = palette.regions[region]
+
+        # 1. Cor dominante
+        dom = color_region.dominant_color
+        dom_name = _rgb_to_color_name(dom)
+
+        # 2. Procura por cor de destaque com alta saturação nas top-N cores da região
+        accent_name = None
+        best_sat = 0.0
+        for color in color_region.colors:
+            r, g, b = color
+            max_c = max(r, g, b)
+            min_c = min(r, g, b)
+            if max_c == 0:
+                continue
+            sat = (max_c - min_c) / max_c  # Saturação HSV simplificada
+            # Considera acento se saturação > 0.35 e for diferente da cor dominante
+            if sat > 0.35 and sat > best_sat:
+                candidate_name = _rgb_to_color_name((r, g, b))
+                if candidate_name != dom_name and candidate_name not in ("white", "black", "gray", "light gray"):
+                    accent_name = candidate_name
+                    best_sat = sat
+
+        if accent_name:
+            descriptions.append(f"{dom_name} {name} with {accent_name} accents")
+        else:
+            descriptions.append(f"{dom_name} {name}")
+
     return ", ".join(descriptions)
 
 
 def _rgb_to_color_name(rgb: Tuple[int, int, int]) -> str:
     """
-    Converte RGB para nome de cor aproximado.
-    
+    Converte RGB para nome de cor aproximado usando lógica HSV.
+
     Args:
         rgb: Tupla (R, G, B)
-        
+
     Returns:
         Nome da cor em inglês
     """
-    r, g, b = rgb
-    
-    # Cores básicas
-    if r > 200 and g > 200 and b > 200:
-        return "white"
-    if r < 50 and g < 50 and b < 50:
-        return "black"
-    if abs(r - g) < 30 and abs(g - b) < 30:
-        if r > 150:
+    r, g, b = int(rgb[0]), int(rgb[1]), int(rgb[2])
+
+    max_c = max(r, g, b)
+    min_c = min(r, g, b)
+    delta = max_c - min_c
+
+    # Acromático (branco/cinza/preto)
+    if delta < 20:
+        if max_c > 200:
+            return "white"
+        if max_c < 60:
+            return "black"
+        if max_c > 150:
             return "light gray"
         return "gray"
-    
-    # Tons quentes
-    if r > g and r > b:
-        if g > 150:
-            return "yellow"
-        if g > 100:
-            return "orange"
-        if b > 100:
-            return "pink"
+
+    # Saturação muito baixa = cinza colorido
+    saturation = delta / max_c if max_c > 0 else 0
+    if saturation < 0.20:
+        if max_c > 180:
+            return "light gray"
+        return "gray"
+
+    # Calcula matiz (hue) aproximado em graus
+    if max_c == r:
+        hue = 60.0 * (((g - b) / delta) % 6)
+    elif max_c == g:
+        hue = 60.0 * (((b - r) / delta) + 2)
+    else:
+        hue = 60.0 * (((r - g) / delta) + 4)
+    if hue < 0:
+        hue += 360
+
+    # Mapeamento de matiz para nome
+    if hue < 15 or hue >= 345:
         return "red"
-    
-    # Tons frios
-    if g > r and g > b:
-        if r > 100:
-            return "lime"
+    if hue < 40:
+        return "orange"
+    if hue < 70:
+        return "yellow" if max_c > 150 else "dark yellow"
+    if hue < 80:
+        return "gold" if saturation > 0.6 else "yellow green"
+    if hue < 160:
         return "green"
-    
-    if b > r and b > g:
-        if r > 100:
-            return "purple"
+    if hue < 200:
+        return "cyan"
+    if hue < 255:
         return "blue"
-    
+    if hue < 285:
+        return "indigo"
+    if hue < 320:
+        return "purple"
+    if hue < 345:
+        return "pink"
+
     return "colored"

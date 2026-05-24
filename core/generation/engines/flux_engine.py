@@ -23,22 +23,30 @@ class FluxEngine(ColorizationEngine):
     def generate(self, payload: dict, seed: int, strength: float = 1.0, options: dict = None) -> tuple[Image.Image, dict]:
         """
         Gera a imagem acionando uma instância local do ComfyUI via Workflow API.
-        Espera que o ComfyUI já esteja rodando e com o 'flux-2-klein-9b-Q4_K_M.gguf' disponível.
+
+        Workflow correto do Klein 4B:
+          - style_ref (colorida) → VAEEncode → ReferenceLatent  (referência visual de cor)
+          - bw_page   (P&B)      → VAEEncode → latent_image      (o que será colorizado)
+          - KSampler guiado pelo ReferenceLatent + prompt textual
         """
         prompt = payload.get("prompt", "manga panel")
         base_image_path = payload.get("base_image_path")
-        
+
         if not base_image_path or not os.path.exists(base_image_path):
             raise FileNotFoundError(f"Source image not found: {base_image_path}")
-            
-        # TODO: Upload the base_image to ComfyUI's /upload/image endpoint 
-        # so it can be referenced by the LoadImage node.
-        uploaded_image_name = self._upload_image_to_comfy(base_image_path)
-        
-        # Build the generic ComfyUI JSON Workflow
+
+        # Upload da página P&B (será o latent_image do KSampler)
+        uploaded_bw_name = self._upload_image_to_comfy(base_image_path)
+
+        # Upload da style_ref colorida (alimenta o ReferenceLatent)
+        style_image = payload.get("style_image")
+        uploaded_style_name = self._upload_style_image_to_comfy(style_image)
+
+        # Monta o workflow com os dois encodings corretamente separados
         comfy_workflow = self._build_comfyui_workflow_json(
             prompt=prompt,
-            image_name=uploaded_image_name,
+            bw_image_name=uploaded_bw_name,
+            style_image_name=uploaded_style_name,
             seed=seed,
             strength=strength,
             options=options
@@ -90,9 +98,9 @@ class FluxEngine(ColorizationEngine):
                     if prompt_id in history:
                         # Generation finished!
                         outputs = history[prompt_id].get("outputs", {})
-                        # Node 10 is our SaveImage node
-                        if "10" in outputs and "images" in outputs["10"]:
-                            images_data = outputs["10"]["images"]
+                        # Node 19 is our SaveImage node
+                        if "19" in outputs and "images" in outputs["19"]:
+                            images_data = outputs["19"]["images"]
                             if images_data:
                                 filename = images_data[0]["filename"]
                                 # ComfyUI serves generated images at /view?filename=...
@@ -133,32 +141,62 @@ class FluxEngine(ColorizationEngine):
 
     def _upload_image_to_comfy(self, local_path: str) -> str:
         """
-        Faz o POST da imagem para o ComfyUI local via multipart form-data
+        Faz o POST de um arquivo de imagem para o ComfyUI local via multipart form-data
         e retorna o nome registrado no servidor.
         """
         import uuid
         boundary = uuid.uuid4().hex
         filename = os.path.basename(local_path)
-        
+
         with open(local_path, "rb") as f:
             file_data = f.read()
-        
+
+        return self._post_image_bytes(file_data, filename, boundary)
+
+    def _upload_style_image_to_comfy(self, style_image) -> str | None:
+        """
+        Faz o upload da imagem de referência colorida (PIL Image ou None).
+        Salva em memória como PNG e envia ao ComfyUI.
+        Retorna o nome registrado, ou None se não houver referência.
+        """
+        if style_image is None:
+            return None
+
+        import uuid
+        from io import BytesIO
+
+        boundary = uuid.uuid4().hex
+        filename = f"style_ref_{uuid.uuid4().hex[:8]}.png"
+
+        buf = BytesIO()
+        # Aceita PIL Image ou path string/Path
+        if isinstance(style_image, (str, Path)):
+            img = Image.open(style_image).convert("RGB")
+        else:
+            img = style_image.convert("RGB")
+        img.save(buf, format="PNG")
+        file_data = buf.getvalue()
+
+        return self._post_image_bytes(file_data, filename, boundary)
+
+    def _post_image_bytes(self, file_data: bytes, filename: str, boundary: str) -> str:
+        """Helper: faz o POST multipart de bytes de imagem ao ComfyUI."""
         data = []
         data.append(f'--{boundary}'.encode('utf-8'))
         data.append(f'Content-Disposition: form-data; name="image"; filename="{filename}"'.encode('utf-8'))
-        data.append(f'Content-Type: application/octet-stream'.encode('utf-8'))
+        data.append(b'Content-Type: application/octet-stream')
         data.append(b'')
         data.append(file_data)
         data.append(f'--{boundary}--'.encode('utf-8'))
         data.append(b'')
         body = b'\r\n'.join(data)
-        
+
         headers = {
             'Content-Type': f'multipart/form-data; boundary={boundary}',
             'Content-Length': str(len(body)),
             'User-Agent': 'Manga-Flux-Client/1.0'
         }
-        
+
         req = urllib.request.Request(f"{self.comfy_url}/upload/image", data=body, headers=headers)
         try:
             with urllib.request.urlopen(req) as response:
@@ -168,146 +206,171 @@ class FluxEngine(ColorizationEngine):
             print(f"Failed to upload image to ComfyUI API: {e}")
             return filename
 
-    def _build_comfyui_workflow_json(self, prompt: str, image_name: str, seed: int, strength: float, options: dict) -> dict:
+    def _build_comfyui_workflow_json(
+        self,
+        prompt: str,
+        bw_image_name: str,
+        style_image_name: str | None,
+        seed: int,
+        strength: float,
+        options: dict,
+    ) -> dict:
         """
-        Monta o nó de Geração (GGUF Loader -> CLIP Text Encode -> Sampler -> VAE Decode) 
-        usando a API JSON estática do ComfyUI.
+        Monta o workflow correto do Klein 4B para colorização de manga P&B.
+
+        Arquitetura:
+          Nós 1-2  : LoadImage + Scale da página P&B
+          Nós 20-21: LoadImage + Scale da style_ref colorida (se disponível)
+          Nó  3    : UnetLoaderGGUF (Klein 4B)
+          Nós 4-5  : CLIPLoader + VAELoader
+          Nós 6-7  : CLIPTextEncode positivo/negativo
+          Nó  8    : VAEEncode da página P&B  → latent_image do KSampler
+          Nó  22   : VAEEncode da style_ref   → ReferenceLatent
+          Nós 9-10 : ReferenceLatent (usa style_ref como âncora visual de cor)
+          Nó  13   : KSampler  — denoise < 1.0 preserva os traços do manga
+          Nós 18-19: VAEDecode + SaveImage
         """
         steps = options.get("num_inference_steps", 28) if options else 28
-        cfg = options.get("guidance_scale", 4.0) if options else 4.0
+        cfg   = options.get("guidance_scale", 4.0)     if options else 4.0
 
-        workflow = {
+        # Decide qual imagem alimenta o ReferenceLatent:
+        # Para modelos de edição (edit models) como o Flux Klein, a imagem guia original (source/unedited)
+        # deve ser sempre a página P&B para que os traços sejam preservados deterministicamente.
+        ref_vae_node = "8"
+
+        workflow: dict = {
+            # ── Página P&B (o que será colorizado) ───────────────────────────
             "1": {
                 "class_type": "LoadImage",
-                "inputs": {"image": image_name}
+                "inputs": {"image": bw_image_name}
             },
             "2": {
                 "class_type": "ImageScaleToTotalPixels",
                 "inputs": {
                     "image": ["1", 0],
                     "upscale_method": "lanczos",
-                    "downscale": 0.5
+                    "megapixels": 1.0,
+                    "resolution_steps": 64,
                 }
             },
+
+            # ── Modelos ───────────────────────────────────────────────────────
             "3": {
                 "class_type": "UnetLoaderGGUF",
-                "inputs": {"unet_name": "flux-2-klein-9b-Q4_K_M.gguf"}
+                "inputs": {"unet_name": "flux-2-klein-4b-Q4_K_M.gguf"}
             },
             "4": {
                 "class_type": "CLIPLoader",
                 "inputs": {
-                    "clip_name": "qwen_3_8b_fp4mixed.safetensors",
-                    "type": "flux2"
+                    "clip_name": "qwen_3_4b_fp4_flux2.safetensors",
+                    "type": "flux2",
                 }
             },
             "5": {
                 "class_type": "VAELoader",
                 "inputs": {"vae_name": "flux2-vae.safetensors"}
             },
+
+            # ── Condicionamento textual ───────────────────────────────────────
             "6": {
                 "class_type": "CLIPTextEncode",
                 "inputs": {
-                    "text": prompt if prompt else "colorMangaKlein. vibrant colors, detailed shading",
-                    "clip": ["4", 0]
+                    "text": prompt or "colorMangaKlein, vibrant colors, detailed shading",
+                    "clip": ["4", 0],
                 }
             },
             "7": {
                 "class_type": "CLIPTextEncode",
                 "inputs": {
-                    "text": "grayscale, monochrome",
-                    "clip": ["4", 0]
+                    "text": "grayscale, monochrome, blurry, low quality, deformed",
+                    "clip": ["4", 0],
                 }
             },
+
+            # ── VAEEncode da página P&B → latent_image do KSampler ───────────
             "8": {
                 "class_type": "VAEEncode",
                 "inputs": {
                     "pixels": ["2", 0],
-                    "vae": ["5", 0]
+                    "vae":    ["5", 0],
                 }
             },
+
+            # ── ReferenceLatent (âncora visual de cor) ────────────────────────
             "9": {
                 "class_type": "ReferenceLatent",
                 "inputs": {
                     "conditioning": ["6", 0],
-                    "latent": ["8", 0]
+                    "latent":       [ref_vae_node, 0],
                 }
             },
             "10": {
                 "class_type": "ReferenceLatent",
                 "inputs": {
                     "conditioning": ["7", 0],
-                    "latent": ["8", 0]
+                    "latent":       [ref_vae_node, 0],
                 }
             },
-            "11": {
-                "class_type": "LoraLoaderModelOnly",
-                "inputs": {
-                    "model": ["3", 0],
-                    "lora_name": "colorMangaKlein_9B.safetensors",
-                    "strength_model": 1.0
-                }
-            },
-            "12": {
-                "class_type": "EmptyFlux2LatentImage",
-                "inputs": {
-                    "width": 1024,
-                    "height": 1024,
-                    "batch_size": 1
-                }
-            },
+
+            # ── KSampler: coloriza P&B guiado pela referência ─────────────────
+            # denoise < 1.0 preserva a estrutura dos traços originais.
+            # Recomendado: 0.85 (preserva traços) a 0.95 (mais cor, menos traços).
             "13": {
-                "class_type": "SamplerCustomAdvanced",
+                "class_type": "KSampler",
                 "inputs": {
-                    "noise": ["14", 0],
-                    "guider": ["15", 0],
-                    "sampler": ["16", 0],
-                    "sigmas": ["17", 0],
-                    "latent_image": ["12", 0]
+                    "seed":          seed,
+                    "steps":         steps,
+                    "cfg":           cfg,
+                    "sampler_name":  "euler",
+                    "scheduler":     "beta",
+                    "denoise":       strength,
+                    "model":         ["3", 0],
+                    "positive":      ["9", 0],
+                    "negative":      ["10", 0],
+                    "latent_image":  ["8", 0],   # ← página P&B, não a style_ref
                 }
             },
-            "14": {
-                "class_type": "RandomNoise",
-                "inputs": {
-                    "seed": seed,
-                    "noise_type": "fixed"
-                }
-            },
-            "15": {
-                "class_type": "CFGGuider",
-                "inputs": {
-                    "model": ["11", 0],
-                    "positive": ["9", 0],
-                    "negative": ["10", 0],
-                    "cfg": cfg
-                }
-            },
-            "16": {
-                "class_type": "KSamplerSelect",
-                "inputs": {"sampler_name": "euler"}
-            },
-            "17": {
-                "class_type": "Flux2Scheduler",
-                "inputs": {
-                    "steps": steps,
-                    "width": 1024,
-                    "height": 1024
-                }
-            },
+
+            # ── Decode e salva ────────────────────────────────────────────────
             "18": {
                 "class_type": "VAEDecode",
                 "inputs": {
                     "samples": ["13", 0],
-                    "vae": ["5", 0]
+                    "vae":     ["5", 0],
                 }
             },
             "19": {
                 "class_type": "SaveImage",
                 "inputs": {
-                    "images": ["18", 0],
-                    "filename_prefix": "manga_ref_latent"
+                    "images":          ["18", 0],
+                    "filename_prefix": "manga_colorized",
+                }
+            },
+        }
+
+        # Adiciona nós da style_ref somente se ela foi enviada
+        if style_image_name:
+            workflow["20"] = {
+                "class_type": "LoadImage",
+                "inputs": {"image": style_image_name}
+            }
+            workflow["21"] = {
+                "class_type": "ImageScaleToTotalPixels",
+                "inputs": {
+                    "image":          ["20", 0],
+                    "upscale_method": "lanczos",
+                    "megapixels":     1.0,
+                    "resolution_steps": 64,
                 }
             }
-        }
+            workflow["22"] = {
+                "class_type": "VAEEncode",
+                "inputs": {
+                    "pixels": ["21", 0],
+                    "vae":    ["5", 0],
+                }
+            }
+
         return workflow
 
     def unload(self) -> None:

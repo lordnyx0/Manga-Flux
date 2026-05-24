@@ -222,20 +222,39 @@ class Pass1Analyzer:
         image_np = np.array(image)
         img_h, img_w = image_np.shape[:2]
         
+        # Integração VLM global para referência de estilo (page_num == -1)
+        self._vlm_global_characters = None
+        if page_num == -1:
+            try:
+                from core.identity.vlm_service import VLMService
+                vlm_svc = VLMService()
+                self._vlm_global_characters = vlm_svc.describe_all_characters(image_path)
+            except Exception as e:
+                logger.warning(f"Falha ao acionar VLM global no Pass1: {e}. Mantendo extração clássica por personagem.")
+        
         # 1. Detecção de personagens (YOLO)
         detections = self._detect_characters(image_np, page_num)
-        
-        # ADR 004: 2. Segmentação SAM 2.1 + Z-Buffer
+
+        # FIX: Garante char_ids únicos para TODOS os personagens (body/face),
+        # ANTES do SAM/ZBuffer — assim o char_id sempre existe mesmo que SAM/ZBuffer falhe ou seja desativado.
+        _char_counter = 0
+        for det in detections:
+            if det.class_id in (DetectionClass.BODY.value, DetectionClass.FACE.value):
+                det.char_id = f"char_{page_num:03d}_{_char_counter:03d}"
+                _char_counter += 1
+
+        # ADR 004: 2. Segmentação SAM 2.1 + Z-Buffer (refina máscaras e depth, char_ids já estão setados)
         if detections and (self.enable_sam2 or self.enable_zbuffer):
             detections = self._apply_segmentation_and_depth(
                 image_np, detections, (img_w, img_h)
             )
-        
-        # 3. Extração de identidades e paletas
+
+        # 3. Extração de identidades e paletas (apenas para personagens para economizar tempo)
         characters = []
         for det in detections:
-            char_data = self._extract_character_data(det, image_np)
-            characters.append(char_data)
+            if det.class_id in (DetectionClass.BODY.value, DetectionClass.FACE.value):
+                char_data = self._extract_character_data(det, image_np)
+                characters.append(char_data)
         
         # 4. Detecção de contexto narrativo
         scene_type = self._detect_scene_type(image_np)
@@ -247,6 +266,21 @@ class Pass1Analyzer:
         # ADR 004: Extrai depth_order
         depth_order = [det.char_id for det in detections if det.char_id]
         
+        # Constrói um índice rápido char_id -> dados do personagem para O(1) lookup
+        char_data_by_id: Dict[str, Dict] = {c['char_id']: c for c in characters if c.get('char_id')}
+
+        def _get_palette_string(palette_dict) -> Optional[str]:
+            """Gera string descritiva de cor da paleta serializada."""
+            if not palette_dict:
+                return None
+            try:
+                from core.identity.palette_manager import CharacterPalette, generate_prompt_from_palette
+                pal_obj = CharacterPalette.from_dict(palette_dict)
+                desc = generate_prompt_from_palette(pal_obj)
+                return desc if desc else None
+            except Exception:
+                return None
+
         return {
             'page_num': page_num,
             'image_path': image_path,
@@ -264,6 +298,15 @@ class Pass1Analyzer:
                     'mask_shape': det.mask_shape,
                     'depth_score': det.depth_score,
                     'depth_rank': det.depth_rank,
+                    # FIX: Lookup seguro via dict indexado — evita None==None e é O(1)
+                    'embedding': char_data_by_id[det.char_id]['embedding'] if det.char_id and det.char_id in char_data_by_id else None,
+                    'embedding_method': char_data_by_id[det.char_id]['embedding_method'] if det.char_id and det.char_id in char_data_by_id else None,
+                    'body_embedding': char_data_by_id[det.char_id]['body_embedding'] if det.char_id and det.char_id in char_data_by_id else None,
+                    'face_embedding': char_data_by_id[det.char_id]['face_embedding'] if det.char_id and det.char_id in char_data_by_id else None,
+                    'palette': char_data_by_id[det.char_id]['palette'] if det.char_id and det.char_id in char_data_by_id else None,
+                    # FIX: Adiciona string descritiva de cor para uso direto no prompt (com fallback VLM -> K-Means)
+                    'palette_string': char_data_by_id[det.char_id].get('vlm_description') or _get_palette_string(char_data_by_id[det.char_id]['palette']) if det.char_id and det.char_id in char_data_by_id else None,
+                    'vlm_description': char_data_by_id[det.char_id].get('vlm_description') if det.char_id and det.char_id in char_data_by_id else None,
                 }
                 for det in detections
             ],
@@ -293,15 +336,17 @@ class Pass1Analyzer:
             Detecções atualizadas com char_id, sam_mask_rle, depth_score
         """
         # Filtra apenas detecções de personagens (não texto)
-        char_detections = [d for d in detections 
+        char_detections = [d for d in detections
                           if d.class_id in (DetectionClass.BODY.value, DetectionClass.FACE.value)]
-        
+
         if not char_detections:
             return detections
-        
-        # Gera char_ids únicos
+
+        # char_ids já foram gerados em analyze_page antes desta chamada;
+        # apenas garante que estejam presentes (safety net para chamadas diretas).
         for i, det in enumerate(char_detections):
-            det.char_id = f"char_{det.page_num:03d}_{i:03d}"
+            if det.char_id is None:
+                det.char_id = f"char_{det.page_num:03d}_{i:03d}"
         
         # 1. Segmentação SAM 2.1
         sam_results = {}
@@ -567,8 +612,73 @@ class Pass1Analyzer:
         )
         logger.debug(f"Body extraído via {body_method}")
         
-        # --- PASSO 3: Extrai paleta de cores do corpo ---
-        palette = palette_extractor.extract(body_context_pil)
+        # --- PASSO 3: Extrai paleta de cores (VLM com fallback K-Means) ---
+        palette = None
+        vlm_description = None
+        
+        # Integração VLM local para referência de estilo (page_num == -1)
+        if detection.page_num == -1:
+            global_chars = getattr(self, '_vlm_global_characters', None)
+            if global_chars:
+                try:
+                    # Determina posição horizontal normalizada do bbox atual
+                    xmin, ymin, xmax, ymax = detection.bbox
+                    x_center = (xmin + xmax) / 2.0 / full_image.shape[1]
+                    
+                    if x_center < 0.35:
+                        det_pos = "left"
+                    elif x_center > 0.65:
+                        det_pos = "right"
+                    else:
+                        det_pos = "center"
+                        
+                    # Procura correspondência de posição no JSON retornado pelo VLM
+                    best_match = None
+                    for char_vlm in global_chars:
+                        vlm_pos = char_vlm.get("position", "").strip().lower()
+                        if det_pos in vlm_pos or vlm_pos in det_pos:
+                            best_match = char_vlm
+                            break
+                            
+                    if not best_match and global_chars:
+                        best_match = global_chars[0]
+                        
+                    if best_match:
+                        parts = []
+                        for key in ["hair", "skin", "eyes", "clothes", "accessories"]:
+                            val = best_match.get(key, "").strip()
+                            if val and val.lower() not in ["n/a", "none", "not visible", "null", "unknown", "not visible in image"]:
+                                parts.append(f"{val} {key}")
+                        if parts:
+                            vlm_description = ", ".join(parts)
+                except Exception as e:
+                    logger.warning(f"Erro ao mapear personagem global do VLM: {e}")
+            
+            # Fallback clássico caso a correspondência global falhe ou não esteja disponível
+            if not vlm_description:
+                try:
+                    from core.identity.vlm_service import VLMService
+                    vlm_svc = VLMService()
+                    vlm_description = vlm_svc.describe_character_colors(body_context_pil)
+                except Exception as e:
+                    logger.warning(f"Falha ao acionar VLM local no Pass1: {e}.")
+            
+            # Se obteve a descrição do VLM com sucesso, unifica a interface convertendo para CharacterPalette
+            if vlm_description:
+                try:
+                    palette = self._parse_vlm_description_to_palette(
+                        vlm_description, 
+                        character_id=detection.char_id or "temp"
+                    )
+                    logger.info(f"Paleta estruturada gerada com base na descrição VLM para {detection.char_id or 'temp'}")
+                except Exception as e:
+                    logger.warning(f"Falha ao parsear descrição VLM para paleta: {e}. Usando K-Means fallback.")
+                    palette = None
+
+        # Fallback incondicional para K-Means (se for B&W comum ou se extração VLM falhou/não está disponível)
+        if palette is None:
+            palette = palette_extractor.extract(body_context_pil)
+            logger.debug(f"Paleta gerada via K-Means (fallback) para {detection.char_id or 'temp'}")
         
         # Retorna ambos os embeddings separadamente
         # Pass 2 usará body_embedding para IP-Adapter
@@ -584,7 +694,7 @@ class Pass1Analyzer:
             # Embeddings separados para Pass 2
             'body_embedding': body_embedding.tolist() if hasattr(body_embedding, 'tolist') else body_embedding,
             'face_embedding': face_embedding.tolist() if hasattr(face_embedding, 'tolist') else face_embedding,
-            'palette': palette,
+            'palette': palette.to_dict() if hasattr(palette, 'to_dict') else palette,
             'page_num': detection.page_num,
             # ADR 004: Dados de segmentação SAM e profundidade
             'char_id': detection.char_id,
@@ -592,9 +702,83 @@ class Pass1Analyzer:
             'mask_shape': detection.mask_shape,
             'depth_score': detection.depth_score,
             'depth_rank': detection.depth_rank,
+            'vlm_description': vlm_description,
         }
         
         return result
+
+    def _parse_vlm_description_to_palette(self, vlm_desc: str, character_id: str = "temp") -> CharacterPalette:
+        """
+        Garante a unificação de interfaces convertendo a descrição semântica
+        de cores do VLM em um objeto estruturado CharacterPalette.
+        """
+        from core.identity.palette_manager import CharacterPalette, ColorRegion
+        
+        palette = CharacterPalette(
+            character_id=character_id,
+            is_color_reference=True,
+            source_page=-1
+        )
+        if not vlm_desc:
+            return palette
+        
+        # Mapeamento estático aproximado de nomes de cores em inglês para RGB
+        color_map = {
+            "white": (245, 245, 245),
+            "black": (20, 20, 20),
+            "light gray": (200, 200, 200),
+            "gray": (120, 120, 120),
+            "red": (220, 40, 40),
+            "orange": (240, 120, 30),
+            "yellow": (240, 220, 30),
+            "dark yellow": (160, 140, 20),
+            "gold": (218, 165, 32),
+            "yellow green": (154, 205, 50),
+            "green": (40, 180, 40),
+            "cyan": (40, 180, 180),
+            "blue": (40, 80, 220),
+            "indigo": (75, 0, 130),
+            "purple": (128, 0, 128),
+            "pink": (240, 100, 180)
+        }
+        
+        # Divide por vírgulas: "blue hair", "pink skin", etc.
+        parts = [p.strip() for p in vlm_desc.split(",") if p.strip()]
+        for part in parts:
+            region_found = None
+            for reg in ["hair", "skin", "eyes", "clothes", "accessories"]:
+                if reg in part.lower():
+                    region_found = reg
+                    break
+            
+            if not region_found and "clothing" in part.lower():
+                region_found = "clothes"
+                
+            if not region_found:
+                continue
+                
+            # Isola o nome da cor na string
+            color_part = part.lower().replace(region_found, "").replace("clothing", "").strip()
+            
+            matched_rgb = (128, 128, 128)  # default gray se nenhuma cor coincidir
+            for name, rgb in color_map.items():
+                if name in color_part:
+                    matched_rgb = rgb
+                    break
+            
+            # Mapeia região de entrada para as chaves suportadas pela paleta
+            palette_reg_name = region_found
+            if region_found == "clothes":
+                palette_reg_name = "clothes_primary"
+                
+            palette.regions[palette_reg_name] = ColorRegion(
+                region_name=palette_reg_name,
+                dominant_color=matched_rgb,
+                colors=[matched_rgb],
+                percentages=[1.0],
+                confidence=1.0
+            )
+        return palette
     
     def _detect_scene_type(self, image: np.ndarray) -> str:
         """

@@ -60,11 +60,11 @@ Before engineering the full pipeline, it is crucial to confirm the *Flux* model 
 - [x] **Generation Strategy (Initial Phase B):** Implement **Full-Frame Img2Img preserving text mask**. Do not use complex regional inpainting initially.
 
 > **💡 Feasibility Alert (GGUF vs Diffusers):**
-> During sanity tests, it was detected that standard `diffusers` library **does not support native GGUF weight loading** for Flux. HuggingFace requires `safetensors` format or HuggingFace Hub directories to load natively.
+> During sanity tests, it was detected that standard `diffusers` library **does not support native GGUF weight loading** for Flux (`flux-2-klein-9b-Q4_K_M.gguf`). HuggingFace requires `safetensors` format or HuggingFace Hub directories to load natively.
 > **Impact on the Resolved Plan (Option B Chosen):** Since the quantized GGUF version reduces the need for extreme offload but isn't natively supported in Python, **we adopted Option B (ComfyUI Headless)**. The `FluxEngine` (in Manga-Flux) acts as a REST client compiling a JSON workflow to be dispatched to a ComfyUI instance running locally in the background.
 > 
 > **🔤 Note on Text Encoder (Flux.2 Klein + Qwen3):**
-> The **Flux.2 Klein** series abandoned the original Flux.1 dual structure (T5-XXL + CLIP-L) and strictly uses the **Qwen 3** language model for Text Encoding. In the **4B** migration, the `CLIPLoader` node within the JSON Payload points to `qwen_3_4b_fp4_flux2.safetensors` (using Qwen-3-4B instead of the 9B's Qwen-3-8B) to prevent layer dimension mismatches.
+> The **Flux.2 Klein** series abandoned the original Flux.1 dual structure (T5-XXL + CLIP-L) and strictly uses the **Qwen 3** language model for Text Encoding. The `CLIPLoader` node within the JSON Payload must always point to `qwen_3_8b_fp4mixed.safetensors`.
 
 ### 2.3. Pass2 Architecture Implementation (Orchestrator and ComfyUI Engine)
 - [x] Implement layer separation (`Pass2 Orchestrator` -> `PromptBuilder`, `MaskBinder`, `StyleBinder`, REST `FluxEngine`).
@@ -79,9 +79,8 @@ Before engineering the full pipeline, it is crucial to confirm the *Flux* model 
 > 2. **EPS Incompatibility:** Setting `ModelSamplingDiscrete` to `eps` standard breaks FLUX latent tensors entirely (yielding TV noise), since its foundations map Flow Matching (Rectified Flows), not standard noise.
 > 3. **The ReferenceLatent Solution (UUID `4929e576-...`):** Investigating ComfyUI GroupNodes, we found they were hiding the Custom Node `ReferenceLatent` (from the `ComfyUI_experiments` extension). Flow Matching models must start from an Empty Latent to compute trajectory properly. Instead of pushing B&W into a direct `VAEEncode` to `KSampler`, the lineart is encoded and injected **inside Conditionings (Positive/Negative)** via `ReferenceLatent`. 
 > 
-> **Applied Resolution (Lineart Locking & Character Mapping):**
-> 1. **The ReferenceLatent Fix:** We identified and fixed a critical conceptual bug in `flux_engine.py`. Originally, if a style reference was provided, it passed the VAEEncode of the *style reference* (the cover page) to the `ReferenceLatent` node, causing the model to attempt to morph the cover art onto the B&W page, which destroyed the lineart. We refactored `flux_engine.py` to point the `ReferenceLatent` node **unconditionally to the B&W page latent (node "8")**. This locks **100% of the lineart** in place perfectly, while still injecting color palettes semantically via the VLM prompt.
-> 2. **Generic Character Chromatic Mapping (`prompt_hint`):** In black-and-white, characters with similar spiky hair and dark clothes look identical to small vision-language models (such as Gemma 4B), causing them to swap colors if their panel positions differ from the cover registry. To resolve this dynamically without hardcoding any manga-specific logic (keeping the pipeline 100% agnóstico), we implemented support for a generic `prompt_hint` parameter passed via the CLI `--pass2-option` (e.g. `prompt_hint="..."`). The orchestrator retrieves this hint and appends it to the VLM's user prompt, allowing the operator to dynamically guide the color distribution page-by-page.
+> **Applied Resolution:**
+> Our `FluxEngine` was entirely refactored to generate API Payloads matching the `ReferenceLatent` architecture. The *KSampler* receives an `EmptyFlux2LatentImage` keeping a high Denoise. The "ghost" structural image is guided purely semiotically through Conditioning and LoRA weight, curing original lineart destruction without hallucinations.
 ### 2.4. Batch / Testing Integration
 - [x] Update `run_pass2_local.py` script allowing `--engine flux` flag to properly hit the actual pipeline.
 - [x] Adjust and run the pipeline through `run_two_pass_batch_local.py` generating real results (3 to 5-page batch).

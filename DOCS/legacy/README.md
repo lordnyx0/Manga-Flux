@@ -3,12 +3,12 @@
 Manga-Flux is an advanced headless colorization pipeline via API designed with a **Two-Pass** architecture:
 
 - **Pass1 (Analysis)**: Identification and structural segmentation (Speech bubbles, Faces, Bodies, Panels) using Vision AI (YOLO Manga109).
-- **Pass2 (Generation)**: Ultra-high fidelity colorization using the **FLUX.2-Klein-4B** engine, guided by metadata and directly injecting Lineart into the textual conditioning vector (`ReferenceLatent`) to 100% preserve original traits.
+- **Pass2 (Generation)**: Ultra-high fidelity colorization using the **FLUX.2-Klein** engine, guided by metadata and directly injecting Lineart into the textual conditioning vector (`ReferenceLatent`) to 100% preserve original traits.
 
 > **Current Status:** (February 2026) The project has reached a historical milestone. Pass1 and Pass2 are integrated and operational. The **ReferenceLatent** architecture proved capable of perfect colorization while preserving lineart without breaking traditional Denoising in Flux.
 >
-> **Known Issues & Updates (Heading to Phase C):** 
-> * **Excessive Colors / Hyper-detailing (Mitigated):** Migrated from FLUX.2-klein-9B to the lighter **FLUX.2-klein-4B** model. This provides a natural regularizer, rendering flatter, cleaner cartoon/manga colors, avoiding unpredicted details.
+> **Known Issues (Heading to Phase C):** 
+> * **Excessive Colors / Hyper-detailing:** The current generation results in highly vibrant colors with unpredicted details.
 > * **Hallucinations (Horror Vacui):** The model struggles to compose "empty" areas (white sky, poorly read bubble backgrounds), tending to draw random objects where it should preserve empty white. 
 > * **Conflict Resolution:** Phase C (Decoupled) is designed to use Passive Compositing and Regional Inpainting (guided by Pass1) to correct and mask these hallucinations.
 
@@ -42,13 +42,14 @@ Manga-Flux works by intercepting a local instance of **ComfyUI** via API. You wi
     *   *Link*: [https://huggingface.co/deepghs/manga109_yolo]
 
 ### ComfyUI / Pass2 (Diffusion Generation)
-*   **UNet (Base Model):** `flux-2-klein-4b-Q4_K_M.gguf` -> Place in `ComfyUI/models/unet/`
-    *   *Link*: [https://huggingface.co/unsloth/FLUX.2-klein-4B-GGUF/blob/main/flux-2-klein-4b-Q4_K_M.gguf]
-*   **LoRA (Style Injector):** N/A (Desativada temporariamente na Fase B 4B para colorização pura do modelo base)
-*   **CLIP (Text Encoder):** `qwen_3_4b_fp4_flux2.safetensors` -> Place in `ComfyUI/models/text_encoders/`
-    *   *Link*: [https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b/resolve/main/split_files/text_encoders/qwen_3_4b_fp4_flux2.safetensors]
+*   **UNet (Base Model):** `flux-2-klein-9b-Q4_K_M.gguf` -> Place in `ComfyUI/models/unet/`
+    *   *Link*: [https://huggingface.co/unsloth/FLUX.2-klein-9B-GGUF/tree/main]
+*   **LoRA (Style Injector):** `colorMangaKlein_9B.safetensors` -> Place in `ComfyUI/models/loras/`
+    *   *Link*: [https://civitai.com/models/2395415?modelVersionId=2693376]
+*   **CLIP (Text Encoder):** `qwen_3_8b_fp4mixed.safetensors` -> Place in `ComfyUI/models/clip/`
+    *   *Link*: [https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-9b/tree/main/split_files/text_encoders]
 *   **VAE:** `flux2-vae.safetensors` -> Place in `ComfyUI/models/vae/`
-    *   *Link*: [https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b/resolve/main/split_files/vae/flux2-vae.safetensors]
+    *   *Link*: [https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-9b/tree/main/split_files/vae]
 
 ---
 

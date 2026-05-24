@@ -500,8 +500,12 @@ def _resolve_style_reference(
         _download_to(url=style_reference_url, dest=style_path)
         return style_path, "url"
 
+    allow_no_style = bool(payload.get("allow_no_style", False))
+    if allow_no_style:
+        return None, "none"
+
     raise ValueError(
-        "Provide 'style_reference_url' or uploaded 'style_reference_base64'"
+        "Provide 'style_reference_url' or uploaded 'style_reference_base64' (or set 'allow_no_style': true)"
     )
 
 
@@ -793,7 +797,7 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
                 update_status(f"[{i}/{total_pages}] Executando Análise de IA (Passo 1)...")
                 p1 = run_pass1_with_report(
                     page_image=str(page_path),
-                    style_reference=str(style_path),
+                    style_reference=str(style_path) if style_path else "",
                     output_mask=str(mask_path),
                     output_metadata_dir=str(metadata_dir),
                     page_num=i,

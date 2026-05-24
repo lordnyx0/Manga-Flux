@@ -26,14 +26,14 @@ except Exception:  # pragma: no cover - portability fallback
 # ============================================================================
 ROOT_DIR = Path(__file__).parent.parent.absolute()
 MODELS_DIR = ROOT_DIR / "models"
-FLUX_MODEL_PATH = MODELS_DIR / "base" / "flux-2-klein-9b-Q4_K_M.gguf"
+FLUX_MODEL_PATH = MODELS_DIR / "base" / "flux-2-klein-4b-Q4_K_M.gguf"
 
 
 # ============================================================================
 # HARDWARE E PERFORMANCE
 # ============================================================================
-DEVICE = "cpu"  # Force CPU to avoid CUDA compatibility issues
-DTYPE = torch.bfloat16 if DEVICE == "cuda" else torch.float32
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DTYPE = torch.float16 if DEVICE == "cuda" else torch.float32
 
 # Otimizações para 12GB VRAM
 OFFLOAD_TO_CPU = True
@@ -44,12 +44,12 @@ ENABLE_VAE_SLICING = True
 # ============================================================================
 YOLO_MODEL_ID = "deepghs/manga109_yolo"
 YOLO_CONFIDENCE = 0.3
-YOLO_TEXT_CONFIDENCE = 0.20
+YOLO_TEXT_CONFIDENCE = 0.05
 DETECTION_IOU_THRESHOLD = 0.45
 
 SAM2_ENABLED = True
 SAM2_MODEL_SIZE = "tiny"
-SAM2_DEVICE = "cpu"
+SAM2_DEVICE = "cuda"
 SAM2_FALLBACK_TO_BBOX = True
 
 ZBUFFER_ENABLED = True
@@ -88,3 +88,37 @@ EMBEDDINGS_DIR = DATA_DIR / "embeddings"
 
 for dir_path in [CACHE_DIR, MASKS_DIR, EMBEDDINGS_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
+
+# ============================================================================
+# CONFIGURACAO VLM LOCAL (llama.cpp / LM Studio)
+# ============================================================================
+VLM_PROVIDER = "llama-cpp"      # Opcoes: "llama-cpp" ou "lmstudio"
+VLM_PORT = 1234
+VLM_UNLOAD_SCENARIO = 1         # Cenários de VRAM:
+                                # 1 = O uso de VRAM aumenta na geracao -> Desaloca o Gemma antes de pintar (KSampler)
+                                # 2 = O uso de VRAM e estatico/independente -> Mantem o Gemma carregado
+
+# ============================================================================
+# CAMINHOS DO MODELO GEMMA 4-E2B (llama.cpp)
+# Podem ser sobrescritos via variáveis de ambiente para portabilidade.
+# ============================================================================
+import os as _os  # alias para não poluir namespace do módulo
+
+LLAMA_CPP_DIR: str = _os.getenv(
+    "LLAMA_CPP_DIR",
+    r"C:\Users\Nyx\llama-cpp"
+)
+LLAMA_SERVER_EXE: str = _os.getenv(
+    "LLAMA_SERVER_EXE",
+    str(Path(LLAMA_CPP_DIR) / "llama-server.exe")
+)
+GEMMA_MODEL_PATH: str = _os.getenv(
+    "GEMMA_MODEL_PATH",
+    r"C:\Users\Nyx\.lmstudio\models\unsloth\gemma-4-E2B-it-GGUF\gemma-4-E2B-it-UD-Q4_K_XL.gguf"
+)
+GEMMA_MMPROJ_PATH: str = _os.getenv(
+    "GEMMA_MMPROJ_PATH",
+    r"C:\Users\Nyx\.lmstudio\models\unsloth\gemma-4-E2B-it-GGUF\mmproj-F32.gguf"
+)
+# VRAM mínima livre (MB) para offload total na GPU (-ngl 999). Abaixo disso, roda na CPU.
+GEMMA_MIN_VRAM_MB: int = int(_os.getenv("GEMMA_MIN_VRAM_MB", "3072"))

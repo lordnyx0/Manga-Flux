@@ -310,6 +310,14 @@ class HybridIdentitySystem:
         with torch.no_grad():
             embedding = model.get_image_features(**inputs)
             
+            # Trata possíveis retornos de objetos do HuggingFace transformers em versões diferentes
+            if hasattr(embedding, "image_embeds"):
+                embedding = embedding.image_embeds
+            elif hasattr(embedding, "pooler_output"):
+                embedding = embedding.pooler_output
+            elif hasattr(embedding, "last_hidden_state"):
+                embedding = embedding.last_hidden_state[:, 0, :]
+            
             # Normaliza
             embedding = F.normalize(embedding, dim=-1)
         

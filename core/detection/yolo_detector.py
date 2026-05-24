@@ -31,13 +31,14 @@ from dataclasses import dataclass, field
 
 try:
     from config.settings import (
-        DEVICE, YOLO_CONFIDENCE, 
+        DEVICE, YOLO_CONFIDENCE, YOLO_TEXT_CONFIDENCE,
         CONTEXT_INFLATION_FACTOR, VERBOSE
     )
 except ImportError:
     # Fallback para execução standalone
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     YOLO_CONFIDENCE = 0.3
+    YOLO_TEXT_CONFIDENCE = 0.05
     CONTEXT_INFLATION_FACTOR = 1.5
     VERBOSE = True
 
@@ -299,10 +300,11 @@ class YOLODetector:
         else:
             image_rgb = image
         
-        # Executa detecção
+        # Executa detecção com o menor threshold entre global e texto
+        min_conf = min(self.conf_threshold, YOLO_TEXT_CONFIDENCE)
         results = self.model(
             image_rgb,
-            conf=self.conf_threshold,
+            conf=min_conf,
             device=self.device,
             verbose=False
         )
@@ -319,6 +321,20 @@ class YOLODetector:
                 continue
             
             for box in result.boxes:
+                # Confiança
+                conf = float(box.conf[0].cpu().numpy())
+                
+                # Classe
+                cls = int(box.cls[0].cpu().numpy()) if box.cls is not None else 0
+                
+                # Filtra por confiança específica da classe
+                if cls == 3:  # text
+                    if conf < YOLO_TEXT_CONFIDENCE:
+                        continue
+                else:
+                    if conf < self.conf_threshold:
+                        continue
+
                 # Coordenadas
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                 sanitized = self._sanitize_bbox((x1, y1, x2, y2), image.shape[1], image.shape[0])
@@ -330,11 +346,6 @@ class YOLODetector:
                 if (x2 - x1) < 4 or (y2 - y1) < 4:
                     continue
                 
-                # Confiança
-                conf = float(box.conf[0].cpu().numpy())
-                
-                # Classe
-                cls = int(box.cls[0].cpu().numpy()) if box.cls is not None else 0
                 class_name = self.class_map.get(cls, f"class_{cls}")
                 
                 # Determina tipo de detecção

@@ -11,10 +11,7 @@ class ColorizationEngine(ABC):
     @abstractmethod
     def generate(
         self,
-        image: Path,
-        style_reference: Path,
-        mask: Path,
-        prompt: str,
+        payload: dict,
         seed: int,
         strength: float = 1.0,
         options: Optional[Dict[str, Any]] = None,
