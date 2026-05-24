@@ -22,7 +22,12 @@ from core.analysis.pass1_contract import deterministic_seed
 from core.analysis.pass1_pipeline import run_pass1_with_report
 from core.generation.engines.dummy_engine import DummyEngine
 from core.generation.engines.flux_engine import FluxEngine
+<<<<<<< HEAD
 from core.generation.pipeline import Pass2Generator, Pass2PreparedPayload
+=======
+from core.generation.pipeline import Pass2Generator
+from core.correction import run_phase_c_structure_check, save_phase_c_artifacts, serialize_phase_c_report
+>>>>>>> ceac8ea69dd3e6ce644d6d7e35fdbf7424fbb819
 
 VALID_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
@@ -90,6 +95,7 @@ def main() -> None:
         help="Opcoes extras no formato chave=valor (pode repetir)",
     )
     parser.add_argument("--debug-dump-json", action="store_true", help="Se ativo, grava .meta/.runmeta em disco")
+    parser.add_argument("--phase-c-structure", action="store_true", help="Roda validação estrutural da Fase C após o Pass2")
 
     args = parser.parse_args()
 
@@ -211,6 +217,22 @@ def main() -> None:
                 print(f"  [ERROR] page={idx:03d} fallback falhou: {e}")
                 p2_image = None
 
+
+
+        phase_c_report = None
+        phase_c_artifacts = None
+        if args.phase_c_structure:
+            phase_c_report = run_phase_c_structure_check(
+                original_path=str(page),
+                colorized_path=p2_image,
+            )
+            phase_c_artifacts = save_phase_c_artifacts(
+                report=phase_c_report,
+                output_dir=pass2_output,
+                page_num=idx,
+                overlay_base_image=p2_image,
+            )
+
         line = (
             f"  [OK]   page={idx:03d} mode={p1.mode} p2={p2_image} "
             f"strength={args.pass2_strength}"
@@ -219,6 +241,11 @@ def main() -> None:
             line += f" seed_override={seed_override}"
         if p1.fallback_reason:
             line += f" reason={p1.fallback_reason}"
+        if phase_c_report is not None:
+            line += (
+                f" phase_c_alert={phase_c_report['has_structural_alert']}"
+                f" affected={phase_c_report['page_affected_ratio_pct']:.2f}%"
+            )
         print(line)
 
         # Copiar todos os passos para uma pasta isolada de debug
@@ -258,6 +285,8 @@ def main() -> None:
                 "pass2_strength":        args.pass2_strength,
                 "pass2_seed_override":   seed_override,
                 "pass2_options":         pass2_options,
+                "phase_c_structure":     (serialize_phase_c_report(phase_c_report) if phase_c_report else None),
+                "phase_c_artifacts":     phase_c_artifacts,
             }
         )
 
