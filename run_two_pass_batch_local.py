@@ -22,12 +22,9 @@ from core.analysis.pass1_contract import deterministic_seed
 from core.analysis.pass1_pipeline import run_pass1_with_report
 from core.generation.engines.dummy_engine import DummyEngine
 from core.generation.engines.flux_engine import FluxEngine
-<<<<<<< HEAD
+from core.generation.engines.qwen_engine import QwenEngine
 from core.generation.pipeline import Pass2Generator, Pass2PreparedPayload
-=======
-from core.generation.pipeline import Pass2Generator
 from core.correction import run_phase_c_structure_check, save_phase_c_artifacts, serialize_phase_c_report
->>>>>>> ceac8ea69dd3e6ce644d6d7e35fdbf7424fbb819
 
 VALID_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
@@ -80,7 +77,7 @@ def main() -> None:
         default="manga page colorization page={page_num}",
         help="Template de prompt (usa {page_num} e {filename})",
     )
-    parser.add_argument("--engine",            choices=["flux", "dummy"], default="flux", help="Engine do Pass2")
+    parser.add_argument("--engine",            choices=["flux", "qwen", "dummy"], default="qwen", help="Engine do Pass2")
     parser.add_argument("--pass2-strength",    type=float, default=0.85,  help="Denoise do KSampler (0.85 preserva tracos, 0.95 mais cor)")
     parser.add_argument(
         "--pass2-seed-offset",
@@ -114,7 +111,12 @@ def main() -> None:
     pass2_options = parse_options(args.pass2_option)
     pass2_options["chapter_id"] = args.chapter_id
 
-    engine = FluxEngine() if args.engine == "flux" else DummyEngine()
+    if args.engine == "flux":
+        engine = FluxEngine()
+    elif args.engine == "qwen":
+        engine = QwenEngine()
+    else:
+        engine = DummyEngine()
     pass2  = Pass2Generator(engine, state_db_path=args.state_db)
 
     print(f"\n[INFO] Encontradas {len(pages)} paginas em {input_dir}")

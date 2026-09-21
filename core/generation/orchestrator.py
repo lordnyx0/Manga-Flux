@@ -282,3 +282,131 @@ class Pass2Orchestrator:
             "base_image_path": self.metadata.get("page_image")
         }
         return payload
+
+    # ── Qwen-Image-2.1 Edit (determinístico, sem Gemma por página) ────────
+
+    QWEN_EDIT_TEMPLATE = (
+        "Colorize the black-and-white manga page in <image1> preserving "
+        "exact lineart, panel layout and screentones. "
+        "Use the color identity from <image2>.{crops}{palette} "
+        "Flat anime colors, no photorealism, leave speech bubbles white."
+    )
+
+    def build_qwen_edit_prompt(
+        self,
+        matched_character_descs: list,
+        style_prompt: str = "",
+        num_crops: int = 0,
+    ) -> str:
+        """Prompt determinístico com tags <imageN> obrigatórias.
+
+        - <image1> = página P&B, <image2> = style_ref (sempre presentes).
+        - <image3..N> citados só se crops reais forem enviados (num_crops).
+        - Sem trigger Flux (colorMangaKlein) e sem seções livres do Gemma.
+        """
+        crops_txt = ""
+        if num_crops > 0:
+            last = 2 + num_crops
+            crops_txt = (
+                f" Character reference crops in <image3>-<image{last}> "
+                "show the same characters; match their hair, skin, eyes and outfits exactly."
+            )
+        palette_txt = ""
+        if matched_character_descs:
+            palette_txt = " Character color details: " + "; ".join(matched_character_descs) + "."
+        elif style_prompt:
+            palette_txt = f" {style_prompt}."
+        return self.QWEN_EDIT_TEMPLATE.format(crops=crops_txt, palette=palette_txt)
+
+    def prepare_qwen_edit_payload(
+        self,
+        faiss_threshold: float = 0.35,
+        max_ref_crops: int = 8,
+        ref_crops_dir: str | None = None,
+    ) -> dict:
+        """Payload agnóstico para a QwenEngine (sem nenhuma chamada VLM).
+
+        Retorna as mesmas chaves do payload Flux + `qwen_prompt` e
+        `ref_crops` (lista de PIL crops da style_ref para image_3..N).
+        Fail-safe: 0 detecções ou 0 matches → prompt global só com
+        image_1+image_2, nunca aborta.
+        """
+        from pathlib import Path as _Path
+
+        self.prompt_builder.metadata = self.metadata
+        text_mask_path = self.metadata.get("text_mask")
+        if isinstance(text_mask_path, dict) and "path" in text_mask_path:
+            text_mask_path = text_mask_path["path"]
+        mask_binder = MaskBinder(text_mask_path)
+
+        # Override manual para teste A/B: engine carrega do diretório.
+        if ref_crops_dir and _Path(ref_crops_dir).is_dir():
+            style_prompt = self.style_binder.get_style_prompt()
+            manual = sorted(
+                [p for p in _Path(ref_crops_dir).iterdir()
+                 if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}]
+            )[:max_ref_crops]
+            final_prompt = self.build_qwen_edit_prompt([], style_prompt, len(manual))
+            return {
+                "prompt": final_prompt,
+                "qwen_prompt": final_prompt,
+                "style_image": self.style_binder.get_global_style_image(),
+                "ref_crops": [str(p) for p in manual],
+                "text_preservation_mask": mask_binder.get_text_preservation_mask(),
+                "base_image_path": self.metadata.get("page_image"),
+            }
+
+        matched_descs: list[str] = []
+        ref_crops: list = []
+        try:
+            if self.faiss_service is not None and self.reference_characters_count > 0:
+                style_img = self.style_binder.get_global_style_image()
+                for det in self.metadata.get("detections", []):
+                    if det.get("class_name") not in ("body", "face"):
+                        continue
+                    emb = det.get("body_embedding") or det.get("embedding")
+                    if not emb:
+                        continue
+                    if isinstance(emb, list) and emb and isinstance(emb[0], list):
+                        emb = emb[0]
+                    matched_ref, sim = self.faiss_service.search(emb, threshold=faiss_threshold)
+                    if not matched_ref or sim < faiss_threshold:
+                        continue
+                    desc = matched_ref.get("vlm_description") or matched_ref.get("palette_string")
+                    if not desc:
+                        palette_dict = matched_ref.get("palette")
+                        if palette_dict:
+                            try:
+                                from core.identity.palette_manager import (
+                                    CharacterPalette, generate_prompt_from_palette,
+                                )
+                                desc = generate_prompt_from_palette(CharacterPalette.from_dict(palette_dict))
+                            except Exception:
+                                desc = None
+                    if desc:
+                        matched_descs.append(f"character with {desc} (match sim={sim:.2f})")
+                    # Crop visual da style_ref via bbox da referência (PIL, barato).
+                    if len(ref_crops) < max_ref_crops and style_img is not None:
+                        bbox = matched_ref.get("bbox")
+                        try:
+                            if bbox and len(bbox) == 4:
+                                x1, y1, x2, y2 = [max(0, int(v)) for v in bbox]
+                                if x2 > x1 and y2 > y1:
+                                    crop = style_img.crop((x1, y1, x2, y2))
+                                    if crop.size[0] >= 4 and crop.size[1] >= 4:
+                                        ref_crops.append(crop)
+                        except Exception:
+                            continue
+        except Exception as e:
+            print(f"[Pass2Orchestrator] Qwen match falhou ({e}); usando fallback global.")
+
+        style_prompt = "" if matched_descs else self.style_binder.get_style_prompt()
+        final_prompt = self.build_qwen_edit_prompt(matched_descs, style_prompt, len(ref_crops))
+        return {
+            "prompt": final_prompt,
+            "qwen_prompt": final_prompt,
+            "style_image": self.style_binder.get_global_style_image(),
+            "ref_crops": ref_crops,
+            "text_preservation_mask": mask_binder.get_text_preservation_mask(),
+            "base_image_path": self.metadata.get("page_image"),
+        }

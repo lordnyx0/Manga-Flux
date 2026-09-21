@@ -262,7 +262,26 @@ class Pass2Generator:
                     f"({len(registry_from_meta)} personagem(ns)). Caminho 1 ativado."
                 )
 
-        payload = orchestrator.prepare_generation_payload()
+        # Rota Qwen-Image-2.1: payload determinístico sem Gemma por página.
+        # Opt-in legado: options["use_gemma_prompts"]=1 volta ao payload modular.
+        if self.engine.__class__.__name__ == "QwenEngine" and not str(
+            (options or {}).get("use_gemma_prompts", "")
+        ).lower() in {"1", "true", "yes"}:
+            try:
+                faiss_threshold = float((options or {}).get("faiss_threshold", 0.35))
+            except Exception:
+                faiss_threshold = 0.35
+            try:
+                max_ref_crops = int((options or {}).get("max_ref_crops", 8))
+            except Exception:
+                max_ref_crops = 8
+            payload = orchestrator.prepare_qwen_edit_payload(
+                faiss_threshold=faiss_threshold,
+                max_ref_crops=max_ref_crops,
+                ref_crops_dir=(options or {}).get("ref_crops_dir"),
+            )
+        else:
+            payload = orchestrator.prepare_generation_payload()
         faiss_service = getattr(orchestrator, "faiss_service", None)
 
         return Pass2PreparedPayload(

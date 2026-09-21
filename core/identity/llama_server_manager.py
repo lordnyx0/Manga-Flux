@@ -9,17 +9,19 @@ from typing import Optional
 from config.settings import (
     LLAMA_CPP_DIR,
     LLAMA_SERVER_EXE,
-    GEMMA_MODEL_PATH,
-    GEMMA_MMPROJ_PATH,
     GEMMA_MIN_VRAM_MB,
-    VLM_PORT,
+    GEMMA_CTX,
+    REASONING_BUDGET,
+    active_vlm_config,
 )
 
 logger = logging.getLogger("LLAMACppServerManager")
 logger.setLevel(logging.INFO)
 
-# Porta local do servidor llama.cpp
-PORT = VLM_PORT
+
+def _active() -> dict:
+    """Modelo/mmproj/porta ativos (VLM_MODEL=gemma|qwen3.5)."""
+    return active_vlm_config()
 
 class LLAMACppServerManager:
     """
@@ -72,11 +74,13 @@ class LLAMACppServerManager:
         Inicia o llama-server.exe em segundo plano se já não estiver rodando.
         Retorna True se o servidor estiver ativo e pronto para receber conexões.
         """
+        cfg = _active()
+        port = cfg["port"]
         # Verifica se a porta já está ocupada (servidor já ativo)
         try:
-            res = requests.get(f"http://localhost:{PORT}/v1/models", timeout=1.0)
+            res = requests.get(f"http://localhost:{port}/v1/models", timeout=1.0)
             if res.status_code == 200:
-                logger.info("Servidor llama.cpp já está ativo e escutando na porta 1234.")
+                logger.info(f"Servidor llama.cpp já está ativo na porta {port}.")
                 return True
         except Exception:
             pass
@@ -85,8 +89,8 @@ class LLAMACppServerManager:
             logger.error(f"Executável do llama-server não encontrado em: {LLAMA_SERVER_EXE}")
             return False
 
-        if not os.path.exists(GEMMA_MODEL_PATH) or not os.path.exists(GEMMA_MMPROJ_PATH):
-            logger.error("Arquivos do modelo Gemma ou do projetor de visão não encontrados.")
+        if not os.path.exists(cfg["model"]) or not os.path.exists(cfg["mmproj"]):
+            logger.error(f"Modelo VLM ou mmproj não encontrados: {cfg['model']} | {cfg['mmproj']}")
             return False
 
         # Faz as contas de alocação de VRAM
@@ -94,15 +98,17 @@ class LLAMACppServerManager:
 
         cmd = [
             LLAMA_SERVER_EXE,
-            "-m", GEMMA_MODEL_PATH,
-            "--mmproj", GEMMA_MMPROJ_PATH,
-            "--port", str(PORT),
+            "-m", cfg["model"],
+            "--mmproj", cfg["mmproj"],
+            "--port", str(port),
             "-ngl", str(ngl),
-            "-c", "2048",
+            "-c", str(GEMMA_CTX),
             "-t", "8",
             "--no-mmap",
             "--no-warmup"
         ]
+        if REASONING_BUDGET is not None:
+            cmd += ["--reasoning-budget", str(REASONING_BUDGET)]
 
         logger.info(f"Iniciando llama-server em segundo plano: {' '.join(cmd)}")
         
@@ -119,7 +125,7 @@ class LLAMACppServerManager:
             for attempt in range(60):
                 time.sleep(1.0)
                 try:
-                    res = requests.get(f"http://localhost:{PORT}/v1/models", timeout=1.0)
+                    res = requests.get(f"http://localhost:{port}/v1/models", timeout=1.0)
                     if res.status_code == 200:
                         logger.info("Servidor llama.cpp iniciado com sucesso e pronto para uso!")
                         return True

@@ -1,0 +1,17 @@
+{
+  "_comment": "Manga-Flux Qwen-Image-2.1 Image-Edit reference workflow (API format). Placeholders: %BW_IMAGE%, %STYLE_IMAGE%, %PROMPT%, %SEED%. Gerado por QwenEngine._build_comfyui_workflow_json — este arquivo é documentação; o runtime monta o JSON em código para suportar N crops.",
+  "1": {"class_type": "LoadImage", "inputs": {"image": "%BW_IMAGE%"}},
+  "2": {"class_type": "ImageScaleToTotalPixels", "inputs": {"image": ["1", 0], "upscale_method": "lanczos", "megapixels": 1.0, "resolution_steps": 32}},
+  "3": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": "qwen-image-2.1-Q4_K_M.gguf"}},
+  "4": {"class_type": "CLIPLoader", "inputs": {"clip_name": "qwen3vl_8b_int8_convrot.safetensors", "type": "qwen_image"}},
+  "5": {"class_type": "VAELoader", "inputs": {"vae_name": "qwen_image_2.1_vae_bf16.safetensors"}},
+  "6": {"class_type": "TextEncodeQwenImage21", "inputs": {"prompt": "%PROMPT%", "negative_prompt": "", "resolution": 1024, "clip": ["4", 0], "vae": ["5", 0], "images.image_1": ["2", 0], "images.image_2": ["21", 0]}},
+  "7": {"class_type": "QwenImage21Cache", "inputs": {"model": ["3", 0], "device": "auto", "dtype": "default"}},
+  "8": {"class_type": "KSampler", "inputs": {"model": ["7", 0], "positive": ["6", 0], "negative": ["6", 1], "latent_image": ["10", 0], "seed": "%SEED%", "steps": 25, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0}},
+  "9": {"class_type": "EmptyLatentImage", "inputs": {"width": 1024, "height": 1024, "batch_size": 1}},
+  "10": {"class_type": "ComfySwitchNode", "inputs": {"on_false": ["6", 2], "on_true": ["9", 0], "switch": false}},
+  "18": {"class_type": "VAEDecode", "inputs": {"samples": ["8", 0], "vae": ["5", 0]}},
+  "19": {"class_type": "SaveImage", "inputs": {"images": ["18", 0], "filename_prefix": "manga_qwen_edit"}},
+  "20": {"class_type": "LoadImage", "inputs": {"image": "%STYLE_IMAGE%"}},
+  "21": {"class_type": "ImageScaleToTotalPixels", "inputs": {"image": ["20", 0], "upscale_method": "lanczos", "megapixels": 1.0, "resolution_steps": 32}}
+}

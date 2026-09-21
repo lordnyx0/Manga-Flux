@@ -28,6 +28,7 @@ GLOBAL_PIPELINE_STATUS: dict[str, str] = {}
 from core.analysis.pass1_pipeline import run_pass1_with_report
 from core.generation.engines.dummy_engine import DummyEngine
 from core.generation.engines.flux_engine import FluxEngine
+from core.generation.engines.qwen_engine import QwenEngine
 from core.generation.pipeline import Pass2Generator
 
 
@@ -84,9 +85,11 @@ def _load_json_body(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
 def _make_engine(engine_name: str):
     if engine_name == "flux":
         return FluxEngine()
+    if engine_name == "qwen":
+        return QwenEngine()
     if engine_name == "dummy":
         return DummyEngine()
-    raise ValueError("Invalid engine. Supported values: flux, dummy")
+    raise ValueError("Invalid engine. Supported values: flux, qwen, dummy")
 
 
 def _list_meta_files(metadata_dir: Path) -> list[Path]:
@@ -599,9 +602,9 @@ class MangaFluxAPIHandler(BaseHTTPRequestHandler):
         self,
         payload: dict[str, Any],
     ) -> tuple[str, float, int | None, dict[str, Any]]:
-        engine_name = str(payload.get("engine", "flux")).strip().lower()
-        if engine_name not in {"flux", "dummy"}:
-            raise ValueError("Invalid engine. Supported values: flux, dummy")
+        engine_name = str(payload.get("engine", "qwen")).strip().lower()
+        if engine_name not in {"flux", "qwen", "dummy"}:
+            raise ValueError("Invalid engine. Supported values: flux, qwen, dummy")
 
         try:
             strength = float(payload.get("strength", 1.0))

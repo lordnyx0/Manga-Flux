@@ -10,19 +10,20 @@ from PIL import Image
 logger = logging.getLogger("VLMService")
 logger.setLevel(logging.INFO)
 
-from config.settings import VLM_PROVIDER, VLM_PORT
+from config.settings import VLM_PROVIDER, VLM_PORT, active_vlm_config
 VLM_TIMEOUT_SECONDS = 180.0
 
 class VLMService:
     """
     Serviço VLM local para comunicação com LM Studio ou llama-server (OpenAI-compatible API).
     Analisa imagens de personagens e extrai descrições semânticas de cores altamente detalhadas.
+    A porta padrão segue o VLM ativo (VLM_MODEL=gemma|qwen3.5).
     """
-    
-    def __init__(self, host: str = "localhost", port: int = VLM_PORT):
+
+    def __init__(self, host: str = "localhost", port: int | None = None):
         self.host = host
-        self.port = port
-        self.base_url = f"http://{host}:{port}/v1"
+        self.port = port if port is not None else active_vlm_config()["port"]
+        self.base_url = f"http://{host}:{self.port}/v1"
         
     def _encode_image_to_base64(self, image: Union[str, Path, Image.Image]) -> str:
         """Converte uma imagem (caminho ou PIL) para string Base64 em formato PNG."""
@@ -442,4 +443,95 @@ class VLMService:
             return None
         except Exception as e:
             logger.error(f"Erro inesperado na geração do prompt modular: {e}")
+            return None
+
+    def ask_cast_identities(
+        self,
+        page_images: list,
+        system_prompt: str,
+        user_prompt: str,
+        timeout: float = 600.0,
+        max_tokens: int = 8192,
+        temperature: float = 0.1,
+        image_labels: list | None = None,
+    ) -> Optional[dict]:
+        """Chamada multi-imagem para resolução de elenco (chapter-wide).
+
+        Retorna {"content": texto final, "reasoning": trilha <think> (pode
+        ser "")}. Parse/validação por conta do chamador (ex.
+        cast_resolver.parse_cast_response). Retorna None em qualquer
+        falha (servidor offline, timeout, HTTP error).
+        """
+        if VLM_PROVIDER == "llama-cpp":
+            try:
+                from core.identity.llama_server_manager import LLAMACppServerManager
+                if not LLAMACppServerManager.start_server():
+                    logger.error("Falha ao inicializar o llama-server em segundo plano.")
+                    return None
+            except Exception as e:
+                logger.error(f"Erro ao gerenciar llama-server: {e}")
+                return None
+
+        if not page_images:
+            logger.error("ask_cast_identities sem imagens.")
+            return None
+
+        try:
+            image_parts = []
+            for idx, img in enumerate(page_images):
+                try:
+                    b64 = self._encode_image_to_base64(img)
+                except Exception as e:
+                    logger.error(f"Falha ao codificar imagem {idx} em base64: {e}")
+                    return None
+                label = image_labels[idx] if image_labels and idx < len(image_labels) else f"[Page {idx + 1}]"
+                image_parts.append({"type": "text", "text": label})
+                image_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                })
+        except Exception as e:
+            logger.error(f"Erro ao montar partes de imagem: {e}")
+            return None
+
+        model_name = self._get_active_model()
+        logger.info(
+            f"Resolução de elenco: {len(page_images)} imagem(ns) via {model_name} "
+            f"(timeout={timeout}s)."
+        )
+        payload = {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": [{"type": "text", "text": user_prompt}] + image_parts},
+            ],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+
+        try:
+            response = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers={"Content-Type": "application/json"},
+                json=payload,
+                timeout=timeout,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                msg = data["choices"][0]["message"]
+                return {
+                    "content": (msg.get("content") or "").strip(),
+                    "reasoning": (msg.get("reasoning_content") or "").strip(),
+                    "finish_reason": data["choices"][0].get("finish_reason"),
+                }
+            logger.warning(f"VLM status {response.status_code}: {response.text[:300]}")
+            return None
+        except requests.exceptions.Timeout:
+            logger.error("Timeout excedido na resolução de elenco.")
+            return None
+        except requests.exceptions.ConnectionError:
+            logger.error("VLM offline na porta 1234.")
+            return None
+        except Exception as e:
+            logger.error(f"Erro inesperado na resolução de elenco: {e}")
             return None

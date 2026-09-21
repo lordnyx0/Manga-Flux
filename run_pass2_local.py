@@ -3,6 +3,7 @@ import logging
 
 from core.generation.engines.dummy_engine import DummyEngine
 from core.generation.engines.flux_engine import FluxEngine
+from core.generation.engines.qwen_engine import QwenEngine
 from core.generation.pipeline import Pass2Generator
 
 logging.basicConfig(level=logging.INFO)
@@ -16,7 +17,7 @@ def main():
     source_group.add_argument("--page-num", type=int, help="Número da página para carregar do SQLite")
 
     parser.add_argument("--output", default="outputs/results", help="Diretório de saída")
-    parser.add_argument("--engine", choices=["flux", "dummy"], default="flux", help="Motor de colorização")
+    parser.add_argument("--engine", choices=["flux", "qwen", "dummy"], default="qwen", help="Motor de colorização")
     parser.add_argument("--strength", type=float, default=0.85, help="Denoise do KSampler (0.85 preserva traços, 0.95 mais cor)")
     parser.add_argument("--seed-override", type=int, default=None, help="Sobrescreve o seed do metadata")
     parser.add_argument("--state-db", default="metadata/pipeline_state.db", help="SQLite para estado do pipeline")
@@ -24,7 +25,12 @@ def main():
     parser.add_argument("--debug-dump-json", action="store_true", help="Se ativo, grava .runmeta em disco")
 
     args = parser.parse_args()
-    engine = FluxEngine() if args.engine == "flux" else DummyEngine()
+    if args.engine == "flux":
+        engine = FluxEngine()
+    elif args.engine == "qwen":
+        engine = QwenEngine()
+    else:
+        engine = DummyEngine()
     generator = Pass2Generator(engine, state_db_path=args.state_db)
 
     try:

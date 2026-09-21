@@ -122,3 +122,37 @@ GEMMA_MMPROJ_PATH: str = _os.getenv(
 )
 # VRAM mínima livre (MB) para offload total na GPU (-ngl 999). Abaixo disso, roda na CPU.
 GEMMA_MIN_VRAM_MB: int = int(_os.getenv("GEMMA_MIN_VRAM_MB", "3072"))
+# Tamanho de contexto do llama-server (tokens). 32k para resolução de elenco
+# chapter-wide (set-of-marks + adjudicação). Sobrescreva via env GEMMA_CTX.
+GEMMA_CTX: int = int(_os.getenv("GEMMA_CTX", "32768"))
+
+# ============================================================================
+# VLM ALTERNATIVO (comparativo de resolvedor de elenco)
+# Seleção via env VLM_MODEL: "gemma" (default) ou "qwen3.5".
+# ============================================================================
+VLM_MODEL: str = _os.getenv("VLM_MODEL", "gemma").strip().lower()
+
+QWEN35_MODEL_PATH: str = _os.getenv(
+    "QWEN35_MODEL_PATH",
+    r"C:\Users\Nyx\.lmstudio\models\unsloth\Qwen3.5-4B-GGUF\Qwen3.5-4B-UD-Q5_K_XL.gguf",
+)
+QWEN35_MMPROJ_PATH: str = _os.getenv(
+    "QWEN35_MMPROJ_PATH",
+    r"C:\Users\Nyx\.lmstudio\models\unsloth\Qwen3.5-4B-GGUF\mmproj-F16.gguf",
+)
+QWEN35_PORT: int = int(_os.getenv("QWEN35_PORT", "1235"))
+
+
+# Teto de thinking (tokens). Modelos reasoning pequenos entram em ruminação
+# e morrem por finish=length sem responder. None = sem teto (default).
+# Ex.: REASONING_BUDGET=8192 preserva a conclusão e corta o loop.
+REASONING_BUDGET: int | None = (
+    int(_os.getenv("REASONING_BUDGET")) if _os.getenv("REASONING_BUDGET") else None
+)
+
+
+def active_vlm_config() -> dict:
+    """Config ativa do VLM (modelo, mmproj, porta) conforme VLM_MODEL."""
+    if VLM_MODEL in {"qwen3.5", "qwen3_5", "qwen"}:
+        return {"model": QWEN35_MODEL_PATH, "mmproj": QWEN35_MMPROJ_PATH, "port": QWEN35_PORT}
+    return {"model": GEMMA_MODEL_PATH, "mmproj": GEMMA_MMPROJ_PATH, "port": VLM_PORT}

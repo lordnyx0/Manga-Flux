@@ -233,10 +233,17 @@ async function fetchImageInTab(tabId, url, referer) {
 }
 
 /**
- * Downloads all chapter images inside the tab and returns page_uploads[].
+ * Downloads all chapter images inside the tab and returns
+ * { uploads: page_uploads[], fallbackUrls: string[] }.
+ *
+ * Sites sem ACAO (ex.: img.nx-toons.xyz) bloqueiam o fetch in-tab por CORS.
+ * Nesses casos o item vai para fallbackUrls e o servidor baixa direto
+ * (page_urls + page_referer + page_cookie_header).
  */
 async function buildPageUploads(tabId, items, referer, onProgress) {
   const uploads = [];
+  const fallbackUrls = [];
+  let anyFallback = false;
   for (let i = 0; i < items.length; i++) {
     onProgress(i, items.length);
     const item = items[i];
@@ -245,14 +252,40 @@ async function buildPageUploads(tabId, items, referer, onProgress) {
     if (item.source === 'upload' && item.content_base64) {
       uploads.push({ filename: item.filename || `page_${padded}.png`, content_base64: item.content_base64 });
     } else if (item.source === 'url' && item.url) {
-      const { content_base64, filename_ext } = await fetchImageInTab(tabId, item.url, referer);
-      uploads.push({ filename: `page_${padded}.${filename_ext}`, content_base64 });
+      if (anyFallback) {
+        // Já houve CORS neste capítulo: mantém ordem enviando o resto como URL.
+        fallbackUrls.push(item.url);
+        continue;
+      }
+      try {
+        const { content_base64, filename_ext } = await fetchImageInTab(tabId, item.url, referer);
+        uploads.push({ filename: `page_${padded}.${filename_ext}`, content_base64 });
+      } catch (e) {
+        // CORS/hotlink no navegador — delega o capítulo TODO ao servidor
+        // (o servidor concatena page_urls antes de page_uploads; misturar
+        // embaralharia a ordem, então rebaixa os uploads já feitos para URL).
+        anyFallback = true;
+        uploads.length = 0;
+        for (let j = 0; j <= i; j++) {
+          if (items[j].source === 'url' && items[j].url) fallbackUrls.push(items[j].url);
+          // itens 'upload' do usuário não têm URL: vão como uploads e ficam
+          // após as URLs no servidor (caso raro; capítulos web são 100% URL).
+        }
+        for (let j = 0; j <= i; j++) {
+          if (items[j].source === 'upload' && items[j].content_base64) {
+            uploads.push({
+              filename: items[j].filename || `page_${String(j + 1).padStart(3, '0')}.png`,
+              content_base64: items[j].content_base64,
+            });
+          }
+        }
+      }
     } else {
       throw new Error(`Item ${i + 1} inválido: source="${item.source}"`);
     }
   }
   onProgress(items.length, items.length);
-  return uploads;
+  return { uploads, fallbackUrls };
 }
 
 // ---------------------------------------------------------------------------
@@ -591,15 +624,23 @@ runChapterBtn.addEventListener('click', async () => {
   runChapterBtn.disabled = true;
 
   try {
-    // Download full images inside the tab (same origin, session cookies)
-    const page_uploads = await buildPageUploads(
+    // Download full images inside the tab (same origin, session cookies).
+    // Itens bloqueados por CORS caem em fallbackUrls (download server-side).
+    const { uploads: page_uploads, fallbackUrls } = await buildPageUploads(
       tab.id,
       chapterPageItems,
       referer,
       (done, tot) => setStatusLoading(`Baixando imagens via aba (${done}/${tot})…`),
     );
 
-    setStatusLoading(`Enviando ${page_uploads.length} imagens para o servidor…`);
+    if (!page_uploads.length && !fallbackUrls.length) {
+      throw new Error('Nenhuma imagem válida para enviar.');
+    }
+    if (fallbackUrls.length) {
+      setStatusLoading(`${fallbackUrls.length} pág. via download no servidor (CORS)…`);
+    }
+
+    setStatusLoading(`Enviando ${page_uploads.length + fallbackUrls.length} imagens para o servidor…`);
 
     // Generate a simple unique ID for this job
     const clientId = crypto.randomUUID();
@@ -614,6 +655,9 @@ runChapterBtn.addEventListener('click', async () => {
       output_root: outputRootInput.value.trim(),
       options: {},
       page_uploads,
+      page_urls: fallbackUrls,
+      page_referer: referer,
+      page_cookie_header: captureCookieHeader || '',
     };
 
     if (styleReferenceUpload?.contentBase64) {
