@@ -130,7 +130,10 @@ GEMMA_CTX: int = int(_os.getenv("GEMMA_CTX", "32768"))
 # VLM ALTERNATIVO (comparativo de resolvedor de elenco)
 # Seleção via env VLM_MODEL: "gemma" (default) ou "qwen3.5".
 # ============================================================================
-VLM_MODEL: str = _os.getenv("VLM_MODEL", "gemma").strip().lower()
+# Qwen3.5-4B é o resolvedor padrão (venceu o comparativo chapter-wide em
+# 2026-09-21: 4/4 na página de referência vs ~2/4 do Gemma). "gemma" segue
+# como fallback via env.
+VLM_MODEL: str = _os.getenv("VLM_MODEL", "qwen3.5").strip().lower()
 
 QWEN35_MODEL_PATH: str = _os.getenv(
     "QWEN35_MODEL_PATH",

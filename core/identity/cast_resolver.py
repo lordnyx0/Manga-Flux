@@ -303,6 +303,13 @@ def resolve_chapter(
     total = len(pages)
     labels.extend(f"[Page {n} of {total}]" for n in marked_numbers)
 
+    # Mapa marca->bbox para o payload Qwen-Image ("marca 2" sozinha é órfã).
+    # {nº página (ordem original): [{mark, bbox}]}. Páginas sem marcas: [].
+    marks_map: dict[int, list[dict[str, Any]]] = {
+        i + 1: [{"mark": m + 1, "bbox": list(b)} for m, b in enumerate(boxes)]
+        for i, (_, boxes) in enumerate(pages)
+    }
+
     # Cobertura exata esperada: {nº página 1-based: nº de marcas}.
     expected = {i + 1: len(boxes) for i, (_, boxes) in enumerate(pages)}
 
@@ -385,6 +392,11 @@ def resolve_chapter(
             Path(str(output_path)).with_suffix(".raw.txt").write_text(
                 content, encoding="utf-8"
             )
+            marks_path = Path(str(output_path)).with_name("marks.json")
+            marks_path.write_text(
+                json.dumps(marks_map, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        data["marks_map"] = marks_map
         return data
 
     raise RuntimeError(f"Resolução de elenco falhou: {last_error}")

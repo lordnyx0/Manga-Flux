@@ -98,15 +98,38 @@ Registro da sessão de 2026-09-21 (RTX 3060 12GB + 32GB RAM).
 - Troubleshooting desta sessão arquivado nos logs mentais acima; rollback
   Flux/Qwen: seção 1 e `VLM_MODEL=gemma`.
 
-## 6. Próximos passos
+## 6. E2E do capítulo (8 págs, `api/manga_default/chapters/chapter_001/`)
 
-1. Restart Qwen3.5 com budget + resolve ancorado (comparar IDs, `why`,
-   pág-3 vs Gemma-B).
-2. Ablação nº de páginas (1×8 vs 2×4) se ainda houver loop.
-3. Recalibrar StructureGuard; prompt anti-céu-azul.
-4. Ledger de personagens (`character_registry.json` + extração de paleta
-   do colorido) e prompts por painel/posição — desenho aprovado, sem código.
-5. Fiar Fase 2 do batch no dramatis (substituir prompt modular por página).
+- `marks.json` persistido no resolver; `prepare_cast_payload()` monta
+  prompt posicional+contrastivo a partir do dramatis Qwen3.5
+  (capa `page_002` como `image_2`); `run_chapter_e2e` coloriu 8/8 a
+  ~3.7min/pág (`cast_colorized/page_00X_qwen.png`).
+- **Colorização seletiva (emergente, não intencional):** só figuras com ID
+  ganharam cor; fundos/figurantes ficaram P&B — o template falava do elenco
+  mas nunca mandava colorir tudo. Fix: instrução em dois níveis
+  (elenco exato + *"every person, animal, object, background and sky gets
+  full color"*). Flashback preservado em P&B (convenção correta).
+- **Cabelo cinza no noturno (pág-5):** erro do Qwen-Image em geração
+  (dramatis e marcas corretos, tudo P3) — screentone de chuva/noite venceu
+  a identidade. Fix: cláusula de iluminação no template
+  (*shading never changes identity colors*).
+- **Pupila roxa (pág-6):** subespecificação nossa — nada na cadeia dizia a
+  cor dos olhos. Criado slot `eyes` no ledger; P3 = `#26223E` medido.
+- **Bugs do ledger (corrigidos):** bboxes sem reescala p/ saída do Qwen
+  (tamanhos variam! → `scale_bbox` + `input_size` obrigatório) e overwrite
+  com Nones em escrita concorrente (merge sem-destruir).
+- Ledger P3 confirmado c/ hexes reais
+  (`hair #4E3D38, eyes #26223E, skin #CFB6AB, clothes #432222`); P4
+  provisionado. A/B das págs 4–5 com template novo + hexes em `*_v2.png`.
+- `AGENTS.md` no repo + instrução global de background no
+  `~/.config/opencode` (jobs longos só via WMI-detached).
+
+## 7. Próximos passos
+
+1. Avaliar A/B `*_v2.png` (cobertura total? cabelo noturno?).
+2. Recalibrar StructureGuard; prompt anti-céu-azul.
+3. Fiar Fase 2 do batch no dramatis (substituir prompt modular por página).
+4. Ablação nº de páginas se o thinking voltar a enrolar.
 
 ## 7. Rollback
 

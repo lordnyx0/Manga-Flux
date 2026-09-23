@@ -83,6 +83,111 @@ class StyleBinder:
             pass
         return ""
 
+def _position_of(bbox, img_width: int) -> str:
+    x1, _, x2, _ = bbox
+    cx = (x1 + x2) / 2.0 / max(img_width, 1)
+    if cx < 0.35:
+        return "on the LEFT"
+    if cx > 0.65:
+        return "on the RIGHT"
+    return "in the CENTER"
+
+
+def prepare_cast_payload(
+    page_path: str,
+    page_marks: list[dict],
+    assignments: list[dict],
+    dramatis_cast: list[dict],
+    registry,
+    style_cover_path: str | None = None,
+    max_crops: int = 8,
+) -> dict:
+    """Monta o payload Qwen-Image a partir do dramatis validado.
+
+    Args:
+        page_path: página P&B a colorir.
+        page_marks: [{"mark": N, "bbox": [x1,y1,x2,y2]}] (marks.json).
+        assignments: [{"mark": N, "person_id": ...}] desta página.
+        dramatis_cast: [{"id": ..., "description": ...}].
+        registry: CharacterRegistry (ledger; pode estar vazio na 1ª vez).
+        style_cover_path: capa colorida como <image2> (opcional).
+        max_crops: teto de crops (image_3..).
+
+    Retorna dict pronto para QwenEngine.generate (prompt, qwen_prompt,
+    style_image, ref_crops, base_image_path).
+    """
+    from PIL import Image as _Image
+
+    descs = {c["id"]: c.get("description", c["id"]) for c in dramatis_cast}
+    by_mark = {m["mark"]: m for m in page_marks}
+    img = _Image.open(page_path).convert("RGB")
+    w, _ = img.size
+
+    lines: list[str] = []
+    ref_crops: list = []
+    seen_ids: list[str] = []
+    for a in sorted(assignments, key=lambda x: x["mark"]):
+        pid = a["person_id"]
+        if pid == "EXTRA":
+            continue
+        m = by_mark.get(a["mark"])
+        if not m:
+            continue
+        pos = _position_of(tuple(m["bbox"]), w)
+        lines.append(f"character {pos} (mark {a['mark']}) = {pid} ({descs.get(pid, pid)})")
+        if pid not in seen_ids:
+            seen_ids.append(pid)
+            # Crop de referência: ledger (colorido registrado) > âncora >
+            # crop da própria página.
+            crop = None
+            reg = registry.get(pid) if registry else None
+            rp = (reg or {}).get("ref_crop")
+            if rp and Path(rp).exists():
+                crop = _Image.open(rp).convert("RGB")
+            if crop is None:
+                x1, y1, x2, y2 = (max(0, int(v)) for v in m["bbox"])
+                crop = img.crop((x1, y1, max(x2, x1 + 1), max(y2, y1 + 1)))
+            if len(ref_crops) < max_crops:
+                ref_crops.append(crop)
+
+    prompt = (
+        "Colorize the ENTIRE black-and-white manga page in <image1> preserving "
+        "exact lineart, panel layout and screentones: every person (named or "
+        "not), animal, object, clothing, background and sky gets full color. "
+        "Only speech bubbles and SFX text stay white. "
+        "Use the color identity from <image2>. "
+    )
+    if lines:
+        prompt += "Cast on this page: " + "; ".join(lines) + ". "
+    if len(seen_ids) > 1:
+        prompt += (
+            "These are DIFFERENT people — never swap their colors: "
+            + ", ".join(f"{pid} is NOT {other}" for pid in seen_ids for other in seen_ids if other != pid)
+            + ". "
+        )
+    reg_block = registry.prompt_block() if registry else ""
+    if reg_block:
+        prompt += reg_block + " "
+    prompt += (
+        "The same person keeps the SAME hair/skin/clothes colors in EVERY "
+        "panel, including night, shadow and rain scenes — shading, screentone "
+        "or darkness never changes identity colors. "
+        "Flat anime colors, no photorealism, leave speech bubbles white."
+    )
+
+    style_image = None
+    if style_cover_path and Path(style_cover_path).exists():
+        style_image = _Image.open(style_cover_path).convert("RGB")
+
+    return {
+        "prompt": prompt,
+        "qwen_prompt": prompt,
+        "style_image": style_image,
+        "ref_crops": ref_crops,
+        "base_image_path": str(page_path),
+    }
+
+
 class Pass2Orchestrator:
     """
     Orquestra a preparação do payload para a Engine (Agnóstica).
@@ -291,6 +396,18 @@ class Pass2Orchestrator:
         "Use the color identity from <image2>.{crops}{palette} "
         "Flat anime colors, no photorealism, leave speech bubbles white."
     )
+
+    def position_of(
+        self, bbox: tuple[int, int, int, int], img_width: int
+    ) -> str:
+        """Posição horizontal do bbox (para grounding espacial no prompt)."""
+        x1, _, x2, _ = bbox
+        cx = (x1 + x2) / 2.0 / max(img_width, 1)
+        if cx < 0.35:
+            return "on the LEFT"
+        if cx > 0.65:
+            return "on the RIGHT"
+        return "in the CENTER"
 
     def build_qwen_edit_prompt(
         self,
