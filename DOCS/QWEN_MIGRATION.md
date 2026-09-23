@@ -124,12 +124,24 @@ Registro da sessão de 2026-09-21 (RTX 3060 12GB + 32GB RAM).
 - `AGENTS.md` no repo + instrução global de background no
   `~/.config/opencode` (jobs longos só via WMI-detached).
 
-## 7. Próximos passos
+## 7. Escopo por painel (anti-bleed) — validado em `page_004`
 
-1. Avaliar A/B `*_v2.png` (cobertura total? cabelo noturno?).
-2. Recalibrar StructureGuard; prompt anti-céu-azul.
-3. Fiar Fase 2 do batch no dramatis (substituir prompt modular por página).
-4. Ablação nº de páginas se o thinking voltar a enrolar.
+- v2 (página inteira, todos os IDs): cobertura total mas **sangramento** —
+  a cavaleira P2 saiu com rosto/cabelo do Regulus (2 âncoras P3 dominaram).
+- v3 (1 geração por painel, 1 ID cada): bleed zerado, mas micro-painel do
+  olho (2095×507) **derivou** para dois bustos inventados.
+- v4 (painel + margem de contexto 12%, recorte interno recomposto):
+  melhor das três — cobertura total, sem bleed, sem deriva.
+- **Regras:** 1 ID por geração sempre que separável por frame; micro-painel
+  (<15% da página ou <600px) nunca gera solo, vai com margem; 1 crop-âncora
+  por ID por página; P2 ancorada via `anchor_P2_knight.png` + hexes no ledger.
+
+## 8. Próximos passos
+
+1. Recalibrar StructureGuard; prompt anti-céu-azul.
+2. Fiar Fase 2 do batch no dramatis + ledger + escopo por painel
+   (substituir prompt modular por página).
+3. Ablação nº de páginas se o thinking voltar a enrolar.
 
 ## 7. Rollback
 
