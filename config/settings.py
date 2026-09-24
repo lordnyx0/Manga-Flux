@@ -153,6 +153,14 @@ REASONING_BUDGET: int | None = (
     int(_os.getenv("REASONING_BUDGET")) if _os.getenv("REASONING_BUDGET") else None
 )
 
+# Draft para speculative decoding (acelera o decode; prefill de visão não
+# muda). Mesmo vocabulário do modelo principal. "" = desativado.
+# Ex.: Qwen3.5-0.8B-UD-Q4_K_XL.gguf como draft do 4B.
+DRAFT_MODEL_PATH: str = _os.getenv(
+    "DRAFT_MODEL_PATH",
+    r"C:\Users\Nyx\.lmstudio\models\unsloth\Qwen3.5-0.8B-GGUF\Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+)
+
 
 def active_vlm_config() -> dict:
     """Config ativa do VLM (modelo, mmproj, porta) conforme VLM_MODEL."""

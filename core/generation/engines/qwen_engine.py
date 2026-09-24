@@ -150,6 +150,13 @@ class QwenEngine(ColorizationEngine):
             print(f"[QwenEngine] Aviso: cfg={cfg} != 1.0 foge do caminho oficial Qwen.")
         sampler = opts.get("sampler_name", "euler")
         scheduler = opts.get("scheduler", "simple")
+        # Denoise: 1.0 = regeneração total (padrão edit oficial); <1.0 ancora
+        # mais no input (útil contra deriva composicional). Via options.
+        try:
+            denoise = float(opts.get("denoise", 1.0))
+        except Exception:
+            denoise = 1.0
+        denoise = min(1.0, max(0.1, denoise))
         resolution = int(opts.get("resolution", 1024))
         custom_size = bool(opts.get("custom_size", False))
         width = int(opts.get("width", 1024))
@@ -196,7 +203,7 @@ class QwenEngine(ColorizationEngine):
                     "cfg": cfg,
                     "sampler_name": sampler,
                     "scheduler": scheduler,
-                    "denoise": 1.0,
+                    "denoise": denoise,
                 },
             },
             "9": {

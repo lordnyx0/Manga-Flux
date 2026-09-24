@@ -87,6 +87,8 @@ temp_parse.py
 # --- CHAPTER AND PIPELINE TEST FOLDERS ---
 Doukutsu_Ou_kara_Hajimeru_Rakuen_Life/
 manga_default/
+api/manga_default/
+api/[0-9]*/
 metadata/page_*.meta.json
 metadata/test_pass1_meta.json
 metadata/pipeline_state.db*

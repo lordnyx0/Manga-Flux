@@ -58,6 +58,15 @@ def test_coverage_exact():
         raise AssertionError(f"should reject ({why}): {payload}")
     # zero-mark page with zero assignments passes
     cr.parse_cast_response('{"cast": [], "assignments": []}', expected_marks={1: 0})
+    # assignments to micro marks are tolerated (post-filter forces EXTRA)
+    micro_ok = (
+        '{"cast": [], "assignments": [{"page": 1, "mark": 1, "person_id": "P1"}, '
+        '{"page": 1, "mark": 2, "person_id": "P2"}]}'
+    )
+    out = cr.parse_cast_response(
+        micro_ok, expected_marks={1: 2}, micro_marks={1: {2}}
+    )
+    assert len(out["assignments"]) == 2
 
 
 def test_user_prompt_labels_anchors_and_pages():

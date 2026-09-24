@@ -12,6 +12,7 @@ from config.settings import (
     GEMMA_MIN_VRAM_MB,
     GEMMA_CTX,
     REASONING_BUDGET,
+    DRAFT_MODEL_PATH,
     active_vlm_config,
 )
 
@@ -109,6 +110,17 @@ class LLAMACppServerManager:
         ]
         if REASONING_BUDGET is not None:
             cmd += ["--reasoning-budget", str(REASONING_BUDGET)]
+        # Draft só quando o arquivo existe E há VRAM (draft ~1GB extra).
+        # Medido em 2026-09-21 (Qwen3.5-4B + 0.8B draft, resolver chapter):
+        # 63.4 tok/s COM draft vs 71.7 SEM — thinking imprevisível tem baixa
+        # aceitação e o overhead piora. Default OFF; ligue com USE_DRAFT=1
+        # apenas se medir ganho no seu workload.
+        if (
+            DRAFT_MODEL_PATH
+            and os.getenv("USE_DRAFT", "0") == "1"
+            and os.path.exists(DRAFT_MODEL_PATH)
+        ):
+            cmd += ["--model-draft", DRAFT_MODEL_PATH]
 
         logger.info(f"Iniciando llama-server em segundo plano: {' '.join(cmd)}")
         

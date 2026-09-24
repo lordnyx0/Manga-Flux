@@ -124,7 +124,22 @@ Registro da sessão de 2026-09-21 (RTX 3060 12GB + 32GB RAM).
 - `AGENTS.md` no repo + instrução global de background no
   `~/.config/opencode` (jobs longos só via WMI-detached).
 
-## 7. Escopo por painel (anti-bleed) — validado em `page_004`
+## 7. Padrão global (vale para qualquer mangá)
+
+`core/generation/panel_pipeline.py::colorize_page_panels` é o caminho
+padrão; o template canônico mora só em `prepare_cast_payload` (sem
+variantes ad-hoc):
+- 1 geração por painel com marcas (só os IDs daquele frame); painel sem
+  marcas vai genérico; sem frames, página inteira.
+- Micro-painel (<15% da área ou lado <600px): gera com margem de 12%
+  (mín. 48px) e recompõe só o miolo.
+- 1 crop por ID (ledger > âncora > crop da página) + capa como `<image2>`.
+- Locks de prompt: layout exato (sem adicionar painéis/pessoas), cobertura
+  total, hexes do ledger, mesma cor em noturno/chuva, bolhas brancas.
+Evidências: v2 (bleed com todos os IDs), v3 (deriva em micro-painel),
+v4 (tudo certo), exp a/b/c (crops inserem gente; denoise<1 colapsa).
+
+## 8. Escopo por painel (anti-bleed) — validado em `page_004`
 
 - v2 (página inteira, todos os IDs): cobertura total mas **sangramento** —
   a cavaleira P2 saiu com rosto/cabelo do Regulus (2 âncoras P3 dominaram).

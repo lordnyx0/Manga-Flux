@@ -122,6 +122,7 @@ def build_cast_user_prompt(
 def parse_cast_response(
     content: str,
     expected_marks: dict[int, int] | None = None,
+    micro_marks: dict[int, set[int]] | None = None,
 ) -> dict[str, Any]:
     """Parse + validação estrutural e de cobertura.
 
@@ -153,6 +154,7 @@ def parse_cast_response(
             raise ValueError(f"Assignment incompleto: {a}")
 
     if expected_marks is not None:
+        micro_marks = micro_marks or {}
         seen: dict[int, set[int]] = {}
         for a in data["assignments"]:
             try:
@@ -161,6 +163,11 @@ def parse_cast_response(
                 raise ValueError(f"page/mark não-inteiros: {a}")
             if pg not in expected_marks:
                 raise ValueError(f"Assignment para página inexistente: {pg}")
+            # Micro-marcas são toleradas (pós-filtro as força para EXTRA);
+            # o resto segue intervalo exato.
+            if mk in micro_marks.get(pg, set()):
+                seen.setdefault(pg, set()).add(mk)
+                continue
             if not 1 <= mk <= expected_marks[pg]:
                 raise ValueError(
                     f"Marca {mk} fora do intervalo na página {pg} "
@@ -170,10 +177,11 @@ def parse_cast_response(
                 raise ValueError(f"Marca duplicada: página {pg} marca {mk}")
             seen[pg].add(mk)
         for pg, total in expected_marks.items():
-            got = len(seen.get(pg, set()))
-            if got != total:
+            got = len(seen.get(pg, set()) - micro_marks.get(pg, set()))
+            want = total - len(micro_marks.get(pg, set()))
+            if got != want:
                 raise ValueError(
-                    f"Cobertura incompleta na página {pg}: {got}/{total} marcas"
+                    f"Cobertura incompleta na página {pg}: {got}/{want} marcas"
                 )
     return data
 
@@ -247,6 +255,11 @@ def resolve_chapter(
     timeout: float = 1200.0,
     temperature: float = 0.1,
     max_tokens: int = 32768,
+    carry_over: dict[str, Any] | None = None,
+    reference_files: list[str] | None = None,
+    page_offset: int = 0,
+    total_pages: int | None = None,
+    next_new_id: int | None = None,
 ) -> dict[str, Any]:
     """Resolve o elenco do capítulo em chamada única (quando couber).
 
@@ -284,34 +297,61 @@ def resolve_chapter(
     # Páginas sem marcas não são enviadas: só gastam contexto e o modelo
     # as conta na numeração (ex. capa-âncora virava "page 1" fantasma).
     # A cobertura continua indexada pela ordem original dos arquivos.
+    refset = {str(r) for r in (reference_files or [])}
+    grand = total_pages or len(pages)
     marked: list[_Image.Image] = []
     marked_numbers: list[int] = []
+    ref_pages: list[int] = []
     for idx, (page_path, boxes) in enumerate(pages):
+        global_n = page_offset + idx + 1
+        if str(page_path) in refset:
+            ref_pages.append(global_n)
+            continue
         if not boxes:
             continue
         img = _Image.open(page_path).convert("RGB")
         m, _ = draw_numbered_marks(img, boxes)
         marked.append(m)
-        marked_numbers.append(idx + 1)
+        marked_numbers.append(global_n)
         if debug_dir:
             d = Path(debug_dir)
             d.mkdir(parents=True, exist_ok=True)
-            m.save(d / f"marked_{idx + 1:03d}.png")
+            m.save(d / f"marked_{global_n:03d}.png")
 
     images.extend(marked)
     n_anchors = len(images) - len(marked)
-    total = len(pages)
-    labels.extend(f"[Page {n} of {total}]" for n in marked_numbers)
+    labels.extend(f"[Page {n} of {grand}]" for n in marked_numbers)
 
-    # Mapa marca->bbox para o payload Qwen-Image ("marca 2" sozinha é órfã).
-    # {nº página (ordem original): [{mark, bbox}]}. Páginas sem marcas: [].
+    # Mapa marca->bbox e cobertura usam numeração GLOBAL (page_offset),
+    # para janelas concordarem com o dramatis unificado.
+    def _gn(i: int) -> int:
+        return page_offset + i + 1
+
     marks_map: dict[int, list[dict[str, Any]]] = {
-        i + 1: [{"mark": m + 1, "bbox": list(b)} for m, b in enumerate(boxes)]
+        _gn(i): [{"mark": m + 1, "bbox": list(b)} for m, b in enumerate(boxes)]
         for i, (_, boxes) in enumerate(pages)
     }
+    MICRO_MARK_PX = 48
+    micro: dict[int, set[int]] = {}
+    for i, (page_path, boxes) in enumerate(pages):
+        try:
+            from PIL import Image as _PIL
 
-    # Cobertura exata esperada: {nº página 1-based: nº de marcas}.
-    expected = {i + 1: len(boxes) for i, (_, boxes) in enumerate(pages)}
+            with _PIL.open(page_path) as _im:
+                _w, _h = _im.size
+            _s = min(1.0, VLM_PAGE_MAX_SIDE / max(_w, _h))
+            for m, (x1, y1, x2, y2) in enumerate(boxes, start=1):
+                if max((x2 - x1) * _s, (y2 - y1) * _s) < MICRO_MARK_PX:
+                    micro.setdefault(_gn(i), set()).add(m)
+        except Exception:
+            continue
+    if micro:
+        logger.info(f"Micro-marcas auto-EXTRA: { {k: sorted(v) for k, v in micro.items()} }")
+
+    expected = {
+        _gn(i): (0 if _gn(i) in ref_pages else len(boxes))
+        for i, (_, boxes) in enumerate(pages)
+    }
 
     base_prompt = build_cast_user_prompt(
         [p for p, _ in pages],
@@ -320,8 +360,28 @@ def resolve_chapter(
         sent_numbers=marked_numbers,
         mark_counts={n: expected[n] for n in marked_numbers},
     )
+    if next_new_id is not None:
+        base_prompt += (
+            f"\nID authority: existing IDs are final, NEVER redefine them. "
+            f"Any genuinely new person gets the next free number starting at "
+            f"P{next_new_id} (P{next_new_id}, P{next_new_id + 1}, ... in order). "
+            f"Reusing P1..P{next_new_id - 1} for a different look is forbidden."
+        )
+    if ref_pages:
+        base_prompt += (
+            f"\nPages {', '.join(str(n) for n in sorted(ref_pages))} are "
+            f"REFERENCE covers (not sent as pages): never assign marks to them."
+        )
+    if micro:
+        skip = "; ".join(
+            f"page {pg} mark {mk}" for pg in sorted(micro) for mk in sorted(micro[pg])
+        )
+        base_prompt += (
+            f"\nTiny inset marks are pre-assigned EXTRA, do NOT assign IDs to them: {skip}."
+        )
     vlm = VLMService()
     last_error: str = "sem resposta"
+    last_partial: dict[str, Any] | None = None
     for attempt in range(1, max_retries + 1):
         # Feedback do erro anterior: o modelo corrige em vez de repetir.
         user_prompt = base_prompt
@@ -366,11 +426,55 @@ def resolve_chapter(
             logger.warning(last_error)
             continue
         try:
-            data = parse_cast_response(content, expected_marks=expected)
+            data = parse_cast_response(
+                content, expected_marks=expected, micro_marks=micro
+            )
+            if next_new_id is not None:
+                import re as _re2
+
+                known = {c["id"] for c in (carry_over or {}).get("cast", [])}
+                known |= {a.get("id", "") for a in (anchors or [])}
+                for c in data.get("cast", []):
+                    m = _re2.fullmatch(r"P(\d+)", str(c.get("id", "")))
+                    if m and c["id"] not in known and int(m.group(1)) < next_new_id:
+                        raise ValueError(
+                            f"ID reciclado: {c['id']} é novo mas < P{next_new_id}"
+                        )
         except ValueError as e:
             last_error = f"tentativa {attempt}: resposta inválida ({e}): {content[:200]}"
             logger.warning(last_error)
+            # Guarda a melhor estrutura parcial: se cobre tudo menos
+            # algumas marcas, o fallback de completude tenta só elas.
+            try:
+                partial = parse_cast_response(content)
+                # Só vale se tem assignments (parcial aproveitável).
+                if partial.get("assignments"):
+                    last_partial = partial
+                    logger.info(
+                        f"tentativa {attempt}: parcial aproveitável "
+                        f"({len(partial['assignments'])} assigns)"
+                    )
+            except Exception as pe:
+                logger.warning(f"tentativa {attempt}: parcial ilegível ({pe})")
+                last_partial = None
             continue
+        # Aplica micro-marcas: remove atribuições do modelo a elas (se
+        # houver) e completa como EXTRA — sem gastar retry com ilegível.
+        # Páginas-referência são ignoradas aqui (cobertura zero absoluta).
+        if micro:
+            kept = []
+            for a in data["assignments"]:
+                if int(a["page"]) in micro and int(a["mark"]) in micro[int(a["page"])]:
+                    continue
+                kept.append(a)
+            for pg, mks in micro.items():
+                if pg in ref_pages:
+                    continue
+                for mk in sorted(mks):
+                    kept.append({"page": pg, "mark": mk, "person_id": "EXTRA",
+                                 "confidence": 1.0,
+                                 "why": "micro-mark below legibility, auto-EXTRA"})
+            data["assignments"] = sorted(kept, key=lambda x: (int(x["page"]), int(x["mark"])))
         # Flag anti-colapso: raciocínios idênticos em massa indicam
         # carimbo (template-matching), não atribuição real. Não rejeita —
         # apenas sinaliza para o reviewer / eval comparativo.
@@ -392,11 +496,180 @@ def resolve_chapter(
             Path(str(output_path)).with_suffix(".raw.txt").write_text(
                 content, encoding="utf-8"
             )
-            marks_path = Path(str(output_path)).with_name("marks.json")
+            # NUNCA "marks.json" puro: esse nome pertence ao YOLO full-chapter.
+            marks_path = Path(str(output_path)).with_name(
+                f"{Path(str(output_path)).stem}.marks.json"
+            )
             marks_path.write_text(
                 json.dumps(marks_map, ensure_ascii=False, indent=2), encoding="utf-8"
             )
         data["marks_map"] = marks_map
         return data
 
+    # Fallback de completude: se a última parcial tem estrutura válida mas
+    # faltam poucas marcas (<=3), uma chamada focada só nelas costuma
+    # resolver (atenção concentrada). Funde e revalida.
+    if last_partial:
+        have = {(int(a["page"]), int(a["mark"])) for a in last_partial.get("assignments", [])}
+        want: set[tuple[int, int]] = set()
+        for pg, total in expected.items():
+            for mk in range(1, total + 1):
+                if (pg, mk) not in have and mk not in micro.get(pg, set()):
+                    want.add((pg, mk))
+        if 0 < len(want) <= 3:
+            logger.info(f"Fallback de completude para {sorted(want)}")
+            miss = ", ".join(f"page {pg} mark {mk}" for pg, mk in sorted(want))
+            resp = vlm.ask_cast_identities(
+                images,
+                system_prompt=CAST_SYSTEM_PROMPT,
+                user_prompt=(
+                    base_prompt
+                    + f"\nAssign ONLY these missing marks, reusing existing IDs "
+                    f"when they match, else new IDs: {miss}. Respond ONLY the JSON."
+                ),
+                timeout=timeout,
+                image_labels=labels,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            content = resp.get("content", "") if resp else ""
+            if content:
+                try:
+                    extra = parse_cast_response(content)
+                    got = {(int(a["page"]), int(a["mark"])) for a in extra.get("assignments", [])}
+                    if want.issubset(got):
+                        merged = list(last_partial["assignments"]) + [
+                            a for a in extra["assignments"] if (int(a["page"]), int(a["mark"])) in want
+                        ]
+                        last_partial["assignments"] = sorted(
+                            merged, key=lambda x: (int(x["page"]), int(x["mark"])))
+                        for c in extra.get("cast", []):
+                            if c["id"] not in {x["id"] for x in last_partial["cast"]}:
+                                last_partial["cast"].append(c)
+                        data = parse_cast_response(
+                            json.dumps(last_partial),
+                            expected_marks=expected, micro_marks=micro,
+                        )
+                        data["meta"] = {
+                            "pages": len(pages),
+                            "anchors": len(anchors or []),
+                            "attempt": "completion-fallback",
+                            "top_why_freq": 0.0,
+                            "collapse_warning": False,
+                        }
+                        if output_path:
+                            save_dramatis(output_path, data)
+                        data["marks_map"] = marks_map
+                        return data
+                except (ValueError, TypeError, AttributeError) as e:
+                    last_error += f" | fallback falhou ({e})"
+
     raise RuntimeError(f"Resolução de elenco falhou: {last_error}")
+
+
+def resolve_chapter_windowed(
+    pages: list[tuple[str, list[tuple[int, int, int, int]]]],
+    anchors: list[dict[str, Any]] | None = None,
+    output_path: str | Path | None = None,
+    debug_dir: str | Path | None = None,
+    window_size: int = 10,
+    overlap: int = 2,
+    start_window: int = 1,
+    prior_dramatis: dict[str, Any] | None = None,
+    reference_files: list[str] | None = None,
+    **kwargs,
+) -> dict[str, Any]:
+    """Resolve capítulos longos em janelas sobrepostas com carry-over.
+
+    Cada janela tem até `window_size` páginas; as últimas `overlap` páginas
+    se repetem na próxima janela para continuidade temporal. O elenco
+    acumulado vai como `carry_over` (texto) — os IDs se mantêm, novos
+    continuam a numeração. Retorna dramatis unificado (páginas na ordem
+    original). Requer ao menos 1 página com marcas por janela.
+    """
+    if len(pages) <= SINGLE_CALL_MAX_PAGES:
+        return resolve_chapter(
+            pages, anchors=anchors, output_path=output_path,
+            debug_dir=debug_dir, **kwargs,
+        )
+
+    merged_cast: list[dict[str, Any]] = []
+    merged_assign: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    carry: dict[str, Any] | None = None
+    if prior_dramatis:
+        for c in prior_dramatis.get("cast", []):
+            if c["id"] not in seen_ids:
+                seen_ids.add(c["id"])
+                merged_cast.append(c)
+        for a in prior_dramatis.get("assignments", []):
+            merged_assign.append(dict(a))
+        carry = {"cast": merged_cast}
+    step = max(window_size - overlap, 1)
+    start = 0
+    nwin = 0
+    # Resume: avança até a janela pedida (1-based), pulando inclusive as
+    # janelas vazias da mesma forma determinística.
+    target = max(start_window, 1)
+    while nwin < target - 1 and start < len(pages):
+        chunk = pages[start:start + window_size]
+        if any(boxes for _, boxes in chunk):
+            nwin += 1
+        start += step
+    out_base = Path(str(output_path)) if output_path else None
+    while start < len(pages):
+        chunk = pages[start:start + window_size]
+        # Pula janela sem nenhuma marca (só âncora implícita, nada a atribuir).
+        if not any(boxes for _, boxes in chunk):
+            start += step
+            continue
+        nwin += 1
+        logger.info(f"Janela {nwin}: páginas {start + 1}-{start + len(chunk)}")
+        # Parcial por janela: persiste raws/thinks + permite resume.
+        w_out = (
+            out_base.with_name(f"{out_base.stem}.w{nwin}{out_base.suffix}")
+            if out_base else None
+        )
+        import re as _re3
+
+        _pmax = 0
+        for _c in merged_cast:
+            _m = _re3.fullmatch(r"P(\d+)", str(_c.get("id", "")))
+            if _m:
+                _pmax = max(_pmax, int(_m.group(1)))
+        data = resolve_chapter(
+            chunk, anchors=anchors,
+            output_path=str(w_out) if w_out else None,
+            debug_dir=debug_dir,
+            carry_over=carry, reference_files=reference_files,
+            page_offset=start, total_pages=len(pages),
+            next_new_id=_pmax + 1, **kwargs,
+        )
+        for c in data["cast"]:
+            if c["id"] not in seen_ids:
+                seen_ids.add(c["id"])
+                merged_cast.append(c)
+        # Assignments já vêm em numeração global (page_offset interno).
+        for a in data["assignments"]:
+            merged_assign.append(dict(a))
+        carry = {"cast": merged_cast}
+        start += step
+
+    # Reordena por página (overlap pode duplicar: mantém primeira ocorrência).
+    dedup: dict[tuple[int, int], dict[str, Any]] = {}
+    for a in sorted(merged_assign, key=lambda x: (x["page"], x["mark"])):
+        dedup.setdefault((int(a["page"]), int(a["mark"])), a)
+    data = {
+        "cast": merged_cast,
+        "assignments": list(dedup.values()),
+        "meta": {
+            "pages": len(pages),
+            "anchors": len(anchors or []),
+            "windows": nwin,
+            "window_size": window_size,
+            "overlap": overlap,
+        },
+    }
+    if output_path:
+        save_dramatis(output_path, data)
+    return data

@@ -150,11 +150,15 @@ def prepare_cast_payload(
             if len(ref_crops) < max_crops:
                 ref_crops.append(crop)
 
+    # Template canônico (vale para página inteira e para painel isolado;
+    # não duplicar variantes ad-hoc — evidência em DOCS/QWEN_MIGRATION.md).
     prompt = (
-        "Colorize the ENTIRE black-and-white manga page in <image1> preserving "
-        "exact lineart, panel layout and screentones: every person (named or "
-        "not), animal, object, clothing, background and sky gets full color. "
-        "Only speech bubbles and SFX text stay white. "
+        "Colorize the ENTIRE black-and-white manga image in <image1> keeping "
+        "the EXACT same panel layout, composition, faces, text and lineart — "
+        "change NOTHING except adding color. Same number of panels. Do NOT "
+        "add people, animals, objects or panels not present in <image1>. "
+        "Every person (named or not), animal, object, clothing, background "
+        "and sky gets full color. Only speech bubbles and SFX text stay white. "
         "Use the color identity from <image2>. "
     )
     if lines:
