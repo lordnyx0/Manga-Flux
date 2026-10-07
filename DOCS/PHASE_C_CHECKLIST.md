@@ -18,7 +18,10 @@ Status tracker for Phase C (Structure + Color Consistency).
 - [x] Add optional debug overlay image artifact for manual QA (panel boxes + anomaly colors).
 - [ ] Gate optional CLIP semantic check on availability (grayscale-normalized embeddings).
 - [ ] Introduce per-class/panel thresholds from config (instead of fixed defaults).
-- [ ] Wire `inpaint_mask` directly into Pass2 inpaint retry flow (micro and full-bbox reruns).
+- [x] Wire `inpaint_mask` into Qwen engine config (`SetLatentNoiseMask`
+  50-53, `generate(options={"inpaint_mask": ...})`, CPU tests verdes).
+- [ ] **PENDENTE (GPU):** smoke test ao vivo provando que o sampler Qwen
+  honra a máscara de ruído (ComfyUI `--lowvram`, ~2min/tentativa).
 
 ## 🔜 Phase C.5 (color consistency)
 - [ ] Build reference color profile bootstrap (first N panels or manual character JSON).

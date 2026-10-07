@@ -38,6 +38,49 @@ def _median_hex(crop: Image.Image) -> str | None:
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
+# Portas HSV que separam cor real de sombra/estouro (Phase C.5).
+_S_MIN, _V_LO, _V_HI = 0.20, 0.15, 0.85
+
+
+def _robust_hex(crop: Image.Image) -> str | None:
+    """Mediana com filtro HSV + cluster LAB (régua fina).
+
+    Descarta pixel sem saturação (cinza/sombra) e estourado/apagado;
+    agrupa o resto só pelos canais cromáticos a/b (L fora: sol e sombra
+    viram o mesmo grupo). Sem pixels válidos suficientes -> None
+    (sem confiança, sem escrita). Fallback: mediana dos válidos.
+    """
+    import numpy as np
+
+    if crop.size[0] < 2 or crop.size[1] < 2:
+        return None
+    rgb = np.asarray(crop.convert("RGB")).astype(np.float32) / 255.0
+    hsv = np.asarray(crop.convert("HSV")).astype(np.float32)
+    hsv[..., 0] /= 255.0
+    hsv[..., 1:] /= 255.0
+    ok = ((hsv[..., 1] >= _S_MIN)
+          & (hsv[..., 2] >= _V_LO) & (hsv[..., 2] <= _V_HI))
+    px = rgb[ok]
+    if px.shape[0] < 20:
+        return None
+    try:
+        from skimage.color import rgb2lab
+        lab = rgb2lab(px.reshape(1, -1, 3)).reshape(-1, 3)
+        ab = lab[:, 1:]
+        k = min(3, max(2, px.shape[0] // 500))
+        from sklearn.cluster import KMeans
+        km = KMeans(n_clusters=min(k, px.shape[0]), random_state=42,
+                    n_init=10)
+        lab_pred = km.fit_predict(ab)
+        best = int(np.bincount(lab_pred).argmax())
+        sel = rgb[ok][lab_pred == best]
+        med = np.median(sel, axis=0)
+    except Exception:
+        med = np.median(px, axis=0)
+    r, g, b = (int(round(v * 255)) for v in med)
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
 def scale_bbox(
     bbox: tuple[int, int, int, int],
     from_size: tuple[int, int],
@@ -81,9 +124,9 @@ def extract_palette_from_colorized(
         x1 + int(bw * 0.65), y1 + int(bh * 0.30),
     ))
     return {
-        "hair": _median_hex(hair),
-        "skin": _median_hex(skin),
-        "clothes": _median_hex(clothes),
+        "hair": _robust_hex(hair),
+        "skin": _robust_hex(skin),
+        "clothes": _robust_hex(clothes),
     }
 
 
@@ -170,6 +213,53 @@ class CharacterRegistry:
                 entry["ref_crop"] = str(dest)
             except Exception:
                 pass
+        self.save()
+        return entry
+
+    def register_from_vlm(
+        self,
+        person_id: str,
+        colorized_path: str | Path,
+        body_bbox: tuple[int, int, int, int],
+        page_num: int,
+        vlm: dict[str, Any],
+        description: str = "",
+        input_size: tuple[int, int] | None = None,
+    ) -> dict[str, Any]:
+        """Registro com autoridade VLM (Qwen aponta, heurística escreve).
+
+        Mede com `extract_palette_from_colorized` e só grava as regiões
+        onde palavra (VLM) e número (régua) concordam (`adjudicate`).
+        Conflito/recorte ruim -> segura (`held`), marca `needs_review` e
+        NUNCA apaga valor bom já gravado. Sem nenhuma confirmação, o
+        status fica `provisional` (fora do `prompt_block`).
+        """
+        from core.identity.vlm_palette import adjudicate, REGIONS
+
+        entry = self.seed(person_id, description, first_seen_page=page_num)
+        measured = extract_palette_from_colorized(
+            colorized_path, body_bbox, input_size=input_size
+        )
+        verdicts = adjudicate(vlm, measured)
+        merged = dict(entry.get("palette") or {})
+        for r in REGIONS:
+            if verdicts[r]["verdict"] == "confirmed":
+                merged[r] = verdicts[r]["measured_hex"]
+        entry["palette"] = merged
+        entry["vlm_words"] = {r: (vlm.get(r) or {}).get("color") for r in REGIONS}
+        entry["region_verdicts"] = {r: verdicts[r]["verdict"] for r in REGIONS}
+        conflicts = [r for r in REGIONS if verdicts[r]["verdict"] == "conflict"]
+        entry["needs_review"] = bool(conflicts)
+        if conflicts:
+            entry["review_note"] = "; ".join(
+                f"{r}: {verdicts[r]['reason']}" for r in conflicts)
+        elif "review_note" in entry:
+            entry.pop("review_note", None)
+        if any(v == "confirmed" for v in entry["region_verdicts"].values()):
+            if entry.get("status") != "confirmed":
+                pass  # confirmação continua manual/curadoria (confirm())
+        else:
+            entry["status"] = "provisional"
         self.save()
         return entry
 

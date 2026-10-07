@@ -101,3 +101,28 @@ def test_ref_crops_dir_override(tmp_path):
     (d / "a.png").write_bytes(b"x")
     crops = _engine()._resolve_ref_crops({"ref_crops": ["ignored.png"]}, {"ref_crops_dir": str(d)})
     assert [Path(c).name for c in crops] == ["a.png", "b.png"]
+
+
+def _wf(**kw):
+    base = dict(prompt="x <image1>", bw_image_name="bw.png",
+                style_image_name=None, ref_crop_names=[], seed=1, options={})
+    base.update(kw)
+    return _engine()._build_comfyui_workflow_json(**base)
+
+
+def test_workflow_without_mask_has_no_noise_mask():
+    wf = _wf()
+    kinds = {n["class_type"] for n in wf.values()}
+    assert "SetLatentNoiseMask" not in kinds
+    assert "ImageToMask" not in kinds
+    assert wf["8"]["inputs"]["latent_image"] == ["10", 0]
+
+
+def test_workflow_with_mask_wires_noise_mask():
+    wf = _wf(inpaint_mask_name="mask.png")
+    assert wf["50"]["inputs"] == {"image": "mask.png"}
+    assert wf["51"]["inputs"] == {"image": ["50", 0], "channel": "red"}
+    assert wf["52"]["inputs"] == {"pixels": ["2", 0], "vae": ["5", 0]}
+    assert wf["53"]["inputs"] == {"samples": ["52", 0], "mask": ["51", 0]}
+    assert wf["8"]["inputs"]["latent_image"] == ["53", 0]
+    assert "19" in wf

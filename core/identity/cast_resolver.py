@@ -572,7 +572,7 @@ def resolve_chapter_windowed(
     anchors: list[dict[str, Any]] | None = None,
     output_path: str | Path | None = None,
     debug_dir: str | Path | None = None,
-    window_size: int = 10,
+    window_size: int = 8,
     overlap: int = 2,
     start_window: int = 1,
     prior_dramatis: dict[str, Any] | None = None,

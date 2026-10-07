@@ -89,12 +89,19 @@ Registro da sessão de 2026-09-21 (RTX 3060 12GB + 32GB RAM).
   calibração, 2 evidências) = 6 IDs, `top_why_freq` 0.28, pág-3 ~2/4 com
   continuidade temporal citada. Maioria prompt, minoria modelo.
 - **Qwen3.5-4B UD-Q5_K_XL + mmproj-F16** (porta 1235, `VLM_MODEL=qwen3.5`,
-  ~5.1GB VRAM): thinking de ~72k chars estourou 32k (`finish=length`, JSON
-  vazio). Trail salvo mostra elenco plausível (cavaleira/mãe/protagonista/
-  pai/tio) com loop de ruminação no fim. Fix pronto: `REASONING_BUDGET=8192`
-  (`--reasoning-budget`), parser tolera `<think>`, `max_tokens=32768`.
-  **Pendente:** restart com budget + comparativo idêntico + ablação de
-  nº de páginas.
+  ~5.1GB VRAM): **resolvedor padrão — superioridade comprovada por testes,
+  comparativo encerrado.** Thinking de ~72k chars estourou 32k
+  (`finish=length`, JSON vazio). Trail salvo mostra elenco plausível
+  (cavaleira/mãe/protagonista/pai/tio) com loop de ruminação no fim.
+  Fix aplicado: `REASONING_BUDGET=8192` (`--reasoning-budget`), parser
+  tolera `<think>`, `max_tokens=32768`.
+- **Ablação nº de páginas (2026-09-26, `outputs/ablation_pages/`,
+  Qwen3.5-4B, `temp=0.1`, sem anchors):** N=4 ok 8/8 (417s, 5 IDs,
+  `top_why=0.50`); N=8 ok 16/16 (440s, 4 IDs, `top_why=0.125`);
+  N=12 falhou 0/26 (457s, 3 tentativas rejeitadas — modelo insiste em
+  marca 2 numa página de 1 marca; think 22–29k chars, sem
+  `finish=length`). **Decisão: `window_size=8, overlap=2`** em
+  `resolve_chapter_windowed` (ponto doce; N=12 é zona de falha).
 - Troubleshooting desta sessão arquivado nos logs mentais acima; rollback
   Flux/Qwen: seção 1 e `VLM_MODEL=gemma`.
 
@@ -151,14 +158,37 @@ v4 (tudo certo), exp a/b/c (crops inserem gente; denoise<1 colapsa).
   (<15% da página ou <600px) nunca gera solo, vai com margem; 1 crop-âncora
   por ID por página; P2 ancorada via `anchor_P2_knight.png` + hexes no ledger.
 
-## 8. Próximos passos
+## 10. Próximos passos
 
-1. Recalibrar StructureGuard; prompt anti-céu-azul.
-2. Fiar Fase 2 do batch no dramatis + ledger + escopo por painel
-   (substituir prompt modular por página).
-3. Ablação nº de páginas se o thinking voltar a enrolar.
+1. ~~Recalibrar StructureGuard; prompt anti-céu-azul~~ — fora de escopo
+   (Qwen 2.1 fica bom; anti-céu-azul não é prioridade).
+2. ~~Fiar Fase 2 do batch no dramatis + ledger + escopo por painel~~ —
+   feito no HEAD (`panel_pipeline.colorize_page_panels` padrão).
+3. ~~Ablação nº de páginas~~ — feito (2026-09-26): `window_size=8,
+   overlap=2` (N=8 ok 16/16, `top_why=0.125`; N=12 falha).
+4. ~~Régua fina~~ — feito (2026-09-26): `_robust_hex` (gates HSV
+   `S≥0.2, 0.15≤V≤0.85` + KMeans em `a/b`; cinza puro = `None`).
+5. ~~Reparo com máscara (config)~~ — feito (2026-09-26): `QwenEngine`
+   aceita `inpaint_mask` e monta `SetLatentNoiseMask` (nós 50–53).
+6. **PENDENTE (GPU):** smoke test do repinte com máscara (ComfyUI
+   `--lowvram`, sem VLM junto, ~2min/tentativa).
+7. **PENDENTE (VLM):** rodada ao vivo do juiz de cor
+   (`register_character_vlm_first` com servidor `1235`).
+8. Aberto: ligar fiscal→repinte (item 2), corte por cena, 1-marca.
+
+## 9. Registro de cor: Qwen aponta, heurística escreve (2026-09-26)
+
+Caso P1 (`hair #EECEBC` = bochecha medida como cabelo num close de rosto):
+juiz VLM em palavras (`core/identity/vlm_palette.py`: prompt, parse,
+`word_hex_agree`, `adjudicate`) + régua existente
+(`extract_palette_from_colorized`) + acordo no
+`CharacterRegistry.register_from_vlm` (só grava `confirmed`;
+conflito/recorte ruim = `held` + `needs_review`, status fica
+`provisional`, fora do `prompt_block`). Entrada única do E2E:
+`register_character_vlm_first` (sem servidor cai para a heurística pura).
+Testes CPU: `tests/test_vlm_palette.py` (9, verdes; suite total 27).
 
 ## 7. Rollback
 
-Default segue `flux` / `VLM_MODEL=gemma`. Qwen só com `--engine qwen` /
-`"engine": "qwen"` / `VLM_MODEL=qwen3.5`.
+Default segue `qwen` / `VLM_MODEL=qwen3.5`. Fallback: `flux` /
+`VLM_MODEL=gemma` (seção 1).

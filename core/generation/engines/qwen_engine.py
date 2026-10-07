@@ -77,6 +77,8 @@ class QwenEngine(ColorizationEngine):
         uploaded_crops = [self._upload_crop_to_comfy(c, i) for i, c in enumerate(ref_crops)]
         uploaded_crops = [n for n in uploaded_crops if n]
 
+        uploaded_mask = self._upload_inpaint_mask(payload, options)
+
         workflow = self._build_comfyui_workflow_json(
             prompt=prompt,
             bw_image_name=uploaded_bw,
@@ -84,6 +86,7 @@ class QwenEngine(ColorizationEngine):
             ref_crop_names=uploaded_crops,
             seed=seed,
             options=options,
+            inpaint_mask_name=uploaded_mask,
         )
 
         return self._submit_workflow(workflow, base_image_path)
@@ -129,6 +132,7 @@ class QwenEngine(ColorizationEngine):
         ref_crop_names: list[str],
         seed: int,
         options: dict,
+        inpaint_mask_name: str | None = None,
     ) -> dict:
         """Monta o workflow API Qwen-Image-2.1 Image-Edit.
 
@@ -139,6 +143,13 @@ class QwenEngine(ColorizationEngine):
           10 ComfySwitchNode, 18 VAEDecode, 19 SaveImage,
           20/21 LoadImage+Scale da style_ref,
           30+i / 31+i LoadImage+Scale de cada crop extra.
+
+        Reparo com máscara (opcional, `inpaint_mask_name`):
+          50 LoadImage máscara, 51 ImageToMask, 52 VAEEncode da base,
+          53 SetLatentNoiseMask. O KSampler passa a amostrar ["53", 0]:
+          fora da máscara o latente é preservado (sem colagem), dentro
+          é repintado pelo prompt. PENDENTE: smoke test com GPU para
+          provar que o sampler Qwen honra a máscara de ruído.
         """
         opts = options or {}
         unet_name = opts.get("unet_name", DEFAULT_UNET)
@@ -257,6 +268,17 @@ class QwenEngine(ColorizationEngine):
             text_encode_inputs[f"images.image_{slot}"] = [scale_id, 0]
             next_id += 2
 
+        if inpaint_mask_name:
+            workflow["50"] = {"class_type": "LoadImage",
+                              "inputs": {"image": inpaint_mask_name}}
+            workflow["51"] = {"class_type": "ImageToMask",
+                              "inputs": {"image": ["50", 0], "channel": "red"}}
+            workflow["52"] = {"class_type": "VAEEncode",
+                              "inputs": {"pixels": ["2", 0], "vae": ["5", 0]}}
+            workflow["53"] = {"class_type": "SetLatentNoiseMask",
+                              "inputs": {"samples": ["52", 0], "mask": ["51", 0]}}
+            workflow["8"]["inputs"]["latent_image"] = ["53", 0]
+
         return workflow
 
     # ── Transporte ComfyUI (igual ao FluxEngine, SaveImage="19") ────────
@@ -358,6 +380,37 @@ class QwenEngine(ColorizationEngine):
             )
         except Exception as e:
             print(f"[QwenEngine] Falha no upload do crop {index}: {e}")
+            return None
+
+    def _upload_inpaint_mask(self, payload: dict, options: dict) -> str | None:
+        """Sobe a máscara de repinte (Phase C `inpaint_mask`).
+
+        Aceita path | PIL | numpy (binária ou grayscale). Branco = repinta.
+        None quando ausente (geração normal, sem fio de máscara).
+        """
+        src = (options or {}).get("inpaint_mask", payload.get("inpaint_mask"))
+        if src is None:
+            return None
+        try:
+            buf = BytesIO()
+            if isinstance(src, (str, Path)):
+                img = Image.open(src).convert("L")
+            else:
+                try:
+                    import numpy as _np
+                    if hasattr(src, "dtype"):
+                        arr = (_np.asarray(src) > 0).astype("uint8") * 255
+                        img = Image.fromarray(arr, mode="L")
+                    else:
+                        img = src.convert("L")
+                except Exception:
+                    img = src.convert("L")
+            img.save(buf, format="PNG")
+            return self._post_image_bytes(
+                buf.getvalue(), f"inpaint_mask_{uuid.uuid4().hex[:8]}.png",
+                uuid.uuid4().hex)
+        except Exception as e:
+            print(f"[QwenEngine] Falha no upload da máscara (segue sem): {e}")
             return None
 
     def _post_image_bytes(self, file_data: bytes, filename: str, boundary: str) -> str:
